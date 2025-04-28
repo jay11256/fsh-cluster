@@ -7,8 +7,6 @@
 #SBATCH -c 16
 #SBATCH --mem=128G
 #SBATCH --qos=high
-#SBATCH --partition=vulcan-dpart
-#SBATCH --account=vulcan
 #SBATCH --time=540:00
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 #SBATCH --mail-user=bds062@terpmail.umd.edu
