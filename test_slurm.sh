@@ -7,10 +7,11 @@
 #SBATCH -c 16
 #SBATCH --mem=128G
 #SBATCH --qos=high
-#SBATCH --partition=tron
+#SBATCH --partition=vulcan-dpart
+#SBATCH --account=vulcan
 #SBATCH --time=540:00
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
-#SBATCH --mail-user=bds062@terpmail.umd.edu
+#SBATCH --mail-user=jliu1230@terpmail.umd.edu
 #SBATCH -o ./test_script_output.txt
 #SBATCH -e ./test_script_output.txt
 
