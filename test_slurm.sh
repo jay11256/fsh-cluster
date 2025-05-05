@@ -10,8 +10,6 @@
 #SBATCH --partition=tron
 #SBATCH --account=nexus
 #SBATCH --time=540:00
-#SBATCH --mail-type=BEGIN,END,TIME_LIMIT
-#SBATCH --mail-user=jliu1230@terpmail.umd.edu
 #SBATCH -o ./test_script_output.txt
 #SBATCH -e ./test_script_output.txt
 
