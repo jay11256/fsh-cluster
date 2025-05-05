@@ -1,3 +1,3 @@
 # fsh-cluster
 
-hello 🐟🫧
+hello 🐟!🫧
