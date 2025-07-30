@@ -148,30 +148,32 @@ for fish in fish_array:
 
     # Assembling an output video
 
+    fish.filename = os.path.splitext(os.path.basename(fish.filename))[0]
+
     fps = 30
     first_frame = next(iter(vid_seg))
     first_obj = next(iter(vid_seg[first_frame]))
     mask_shape = vid_seg[first_frame][first_obj].shape[-2:]
     height, width = mask_shape
 
-    # Create a VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_bw.mp4", fourcc, fps, (width, height), isColor=True)
+    # # Create a VideoWriter object
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_bw.mp4", fourcc, fps, (width, height), isColor=True)
 
-    # Iterate over frames in order
-    for frame_idx in sorted(vid_seg.keys()):
-        # Combine masks for all objects (e.g., OR them together)
-        combined_mask = np.zeros((height, width), dtype=np.uint8)
-        for obj_id, mask in vid_seg[frame_idx].items(): # Can change this to iterate over specific object id(s)
-            # mask shape: (1, H, W) or (H, W)
-            mask_bin = mask.squeeze().astype(np.uint8) * 255
-            combined_mask = np.maximum(combined_mask, mask_bin)
-        # Convert to 3-channel image for video
-        mask_rgb = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR)
-        out.write(mask_rgb)
+    # # Iterate over frames in order
+    # for frame_idx in sorted(vid_seg.keys()):
+    #     # Combine masks for all objects (e.g., OR them together)
+    #     combined_mask = np.zeros((height, width), dtype=np.uint8)
+    #     for obj_id, mask in vid_seg[frame_idx].items(): # Can change this to iterate over specific object id(s)
+    #         # mask shape: (1, H, W) or (H, W)
+    #         mask_bin = mask.squeeze().astype(np.uint8) * 255
+    #         combined_mask = np.maximum(combined_mask, mask_bin)
+    #     # Convert to 3-channel image for video
+    #     mask_rgb = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR)
+    #     out.write(mask_rgb)
 
-    out.release()
-    print(f"Video saved to {OUTPUT_DIR}")
+    # out.release()
+    # print(f"Video saved to {OUTPUT_DIR}")
 
     # Get frame size and fps from previous variables
     frame_size = (width, height)
