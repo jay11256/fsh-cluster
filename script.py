@@ -146,6 +146,8 @@ for fish in fish_array:
         add_point(0, fish.objectID, [fish.points[i]], [fish.labels[i]], disp)
     vid_seg = propagate(40, disp)
 
+    predictor.reset_state(inference_state)
+
 ##################################################################################################################################
 
     # Assembling an output video
@@ -159,7 +161,7 @@ for fish in fish_array:
     height, width = mask_shape
 
     # # Create a VideoWriter object
-    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     # out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_bw.mp4", fourcc, fps, (width, height), isColor=True)
 
     # # Iterate over frames in order
@@ -181,7 +183,7 @@ for fish in fish_array:
     frame_size = (width, height)
 
     # Create VideoWriter for the final video
-    final_out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_clr.mp4", fourcc, fps, frame_size, isColor=True)
+    final_out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}.mp4", fourcc, fps, frame_size, isColor=True)
 
     # Define a list of distinct colors for up to 10 objects (B, G, R)
     object_colors = [
