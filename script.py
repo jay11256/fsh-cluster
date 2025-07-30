@@ -97,13 +97,18 @@ elif device.type == "mps":
 
 for fish in fish_array:
 
-    # Converting video into jpegs
-    subprocess.run(["ffmpeg",
-                    "-i", fish.filename,
-                    "-q:v", "2",
-                    f"{TEMP_DIR}/%05d.jpg"], check=True)
-    
+    # Converting video into jpegs 
     # Select every nth frame
+    n = 10
+
+    subprocess.run(["ffmpeg",
+            "-i",
+            fish.filename,
+            "-vf",
+            'select=not(mod(n\\,' + str(n) + '))',
+            "-vsync",
+            "vfr",
+            f"{TEMP_DIR}/%05d.jpg"], check=True)
 
     # Scanning each jpeg
     frame_names = [
