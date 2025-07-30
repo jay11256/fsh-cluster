@@ -1,5 +1,6 @@
 # Global Variables
-TSV_PATH = "../temp_data.tsv"
+TSV_PATH = "./selected_points.tsv"
+DATA_DIR = "../../data/autumn/"
 OUTPUT_DIR = "../outputs"
 TEMP_DIR = "../temp"
 
@@ -30,8 +31,9 @@ import csv
 
 with open(TSV_PATH, "r", newline='') as file:
     reader = csv.reader(file, delimiter="\t")
+    next(reader)
     for row in reader:
-        filepath = row[0]
+        filepath = DATA_DIR + row[0]
         objectID = row[1]
         coords = []
         types = []
