@@ -103,6 +103,8 @@ for fish in fish_array:
                     "-q:v", "2",
                     f"{TEMP_DIR}/%05d.jpg"], check=True)
     
+    # Select every nth frame
+
     # Scanning each jpeg
     frame_names = [
         p for p in os.listdir(TEMP_DIR)
