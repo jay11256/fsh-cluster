@@ -146,74 +146,74 @@ for fish in fish_array:
 
 ##################################################################################################################################
 
-# Assembling an output video
+    # Assembling an output video
 
-fps = 30
-first_frame = next(iter(vid_seg))
-first_obj = next(iter(vid_seg[first_frame]))
-mask_shape = vid_seg[first_frame][first_obj].shape[-2:]
-height, width = mask_shape
+    fps = 30
+    first_frame = next(iter(vid_seg))
+    first_obj = next(iter(vid_seg[first_frame]))
+    mask_shape = vid_seg[first_frame][first_obj].shape[-2:]
+    height, width = mask_shape
 
-# Create a VideoWriter object
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-out = cv2.VideoWriter(f"{OUTPUT_DIR}/bw.mp4", fourcc, fps, (width, height), isColor=True)
+    # Create a VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_bw.mp4", fourcc, fps, (width, height), isColor=True)
 
-# Iterate over frames in order
-for frame_idx in sorted(vid_seg.keys()):
-    # Combine masks for all objects (e.g., OR them together)
-    combined_mask = np.zeros((height, width), dtype=np.uint8)
-    for obj_id, mask in vid_seg[frame_idx].items(): # Can change this to iterate over specific object id(s)
-        # mask shape: (1, H, W) or (H, W)
-        mask_bin = mask.squeeze().astype(np.uint8) * 255
-        combined_mask = np.maximum(combined_mask, mask_bin)
-    # Convert to 3-channel image for video
-    mask_rgb = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR)
-    out.write(mask_rgb)
+    # Iterate over frames in order
+    for frame_idx in sorted(vid_seg.keys()):
+        # Combine masks for all objects (e.g., OR them together)
+        combined_mask = np.zeros((height, width), dtype=np.uint8)
+        for obj_id, mask in vid_seg[frame_idx].items(): # Can change this to iterate over specific object id(s)
+            # mask shape: (1, H, W) or (H, W)
+            mask_bin = mask.squeeze().astype(np.uint8) * 255
+            combined_mask = np.maximum(combined_mask, mask_bin)
+        # Convert to 3-channel image for video
+        mask_rgb = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR)
+        out.write(mask_rgb)
 
-out.release()
-print(f"Video saved to {OUTPUT_DIR}")
+    out.release()
+    print(f"Video saved to {OUTPUT_DIR}")
 
-# Get frame size and fps from previous variables
-frame_size = (width, height)
+    # Get frame size and fps from previous variables
+    frame_size = (width, height)
 
-# Create VideoWriter for the final video
-final_out = cv2.VideoWriter(f"{OUTPUT_DIR}/clr.mp4", fourcc, fps, frame_size, isColor=True)
+    # Create VideoWriter for the final video
+    final_out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_clr.mp4", fourcc, fps, frame_size, isColor=True)
 
-# Define a list of distinct colors for up to 10 objects (B, G, R)
-object_colors = [
-    (0, 255, 0),      # Green
-    (0, 0, 255),      # Red
-    (255, 0, 0),      # Blue
-    (0, 255, 255),    # Yellow
-    (255, 0, 255),    # Magenta
-    (255, 255, 0),    # Cyan
-    (128, 128, 0),    # Olive
-    (128, 0, 128),    # Purple
-    (0, 128, 128),    # Teal
-    (255, 128, 0),    # Orange
-]
+    # Define a list of distinct colors for up to 10 objects (B, G, R)
+    object_colors = [
+        (0, 255, 0),      # Green
+        (0, 0, 255),      # Red
+        (255, 0, 0),      # Blue
+        (0, 255, 255),    # Yellow
+        (255, 0, 255),    # Magenta
+        (255, 255, 0),    # Cyan
+        (128, 128, 0),    # Olive
+        (128, 0, 128),    # Purple
+        (0, 128, 128),    # Teal
+        (255, 128, 0),    # Orange
+    ]
 
-# Alpha blending factor for mask overlay
-alpha = 0.4
+    # Alpha blending factor for mask overlay
+    alpha = 0.4
 
-for frame_idx in tqdm(sorted(vid_seg.keys()), desc="Creating final video"):
-    # Load original frame
-    frame_path = os.path.join(TEMP_DIR, frame_names[frame_idx])
-    frame = cv2.imread(frame_path)
-    if frame is None:
-        continue
+    for frame_idx in tqdm(sorted(vid_seg.keys()), desc="Creating final video"):
+        # Load original frame
+        frame_path = os.path.join(TEMP_DIR, frame_names[frame_idx])
+        frame = cv2.imread(frame_path)
+        if frame is None:
+            continue
 
-    # Create a color mask for all objects
-    color_mask = np.zeros_like(frame)
-    for i, (obj_id, mask) in enumerate(vid_seg[frame_idx].items()):
-        mask_bin = mask.squeeze().astype(np.uint8)
-        color = object_colors[i % len(object_colors)]
-        color_mask[mask_bin > 0] = color
+        # Create a color mask for all objects
+        color_mask = np.zeros_like(frame)
+        for i, (obj_id, mask) in enumerate(vid_seg[frame_idx].items()):
+            mask_bin = mask.squeeze().astype(np.uint8)
+            color = object_colors[i % len(object_colors)]
+            color_mask[mask_bin > 0] = color
 
-    # Blend mask with original frame
-    blended = cv2.addWeighted(frame, 1 - alpha, color_mask, alpha, 0)
+        # Blend mask with original frame
+        blended = cv2.addWeighted(frame, 1 - alpha, color_mask, alpha, 0)
 
-    final_out.write(blended)
+        final_out.write(blended)
 
-final_out.release()
-print(f"Final video saved to {OUTPUT_DIR}")
+    final_out.release()
+    print(f"Final video saved to {OUTPUT_DIR}")
