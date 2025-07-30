@@ -146,8 +146,6 @@ for fish in fish_array:
         add_point(0, fish.objectID, [fish.points[i]], [fish.labels[i]], disp)
     vid_seg = propagate(40, disp)
 
-    predictor.reset_state(inference_state)
-
 ##################################################################################################################################
 
     # Assembling an output video
@@ -223,3 +221,11 @@ for fish in fish_array:
 
     final_out.release()
     print(f"Final video saved to {OUTPUT_DIR}")
+
+##################################################################################################################################
+
+    # Cleaning out memory
+    del predictor
+    del inference_state
+    del vid_seg
+    torch.cuda.empty_cache()
