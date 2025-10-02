@@ -1,11 +1,11 @@
 # Global Variables
-TSV_PATH = "./selected_points.tsv"
-DATA_DIR = "../../data/autumn/"
-OUTPUT_DIR = "../outputs"
-TEMP_DIR = "../temp"
+TSV_PATH = "./jason/fsh-cluster/some_points.tsv"
+DATA_DIR = "./data/autumn/data/autumn/dump/"
+OUTPUT_DIR = "./jason/outputs/"
+TEMP_DIR = "./jason/temp/"
 
 # Model Selection
-sam2_checkpoint = "../../programs/sam2/checkpoints/sam2.1_hiera_large.pt"
+sam2_checkpoint = "./programs/sam2/checkpoints/sam2.1_hiera_large.pt"
 model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
 
 ##################################################################################################################################
@@ -41,7 +41,8 @@ with open(TSV_PATH, "r", newline='') as file:
             x = row[i]
             y = row[i+1]
             coords.append([x, y])
-            t = row[i+2]
+            # t = row[i+2]
+            t = 1
             types.append(t)
         fish = FishData(filepath, objectID, coords, types)
         fish_array.append(fish)
