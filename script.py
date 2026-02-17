@@ -1,8 +1,11 @@
 # Global Variables
-TSV_PATH = "./jason/fsh-cluster/some_points.tsv"
-DATA_DIR = "./data/autumn/data/autumn/dump/"
+TSV_PATH = "./jason/fsh-cluster/selected_points.tsv"
+DATA_DIR = "./jason/data/"
 OUTPUT_DIR = "./jason/outputs/"
 TEMP_DIR = "./jason/temp/"
+
+# Video Info
+target_fps = 16
 
 # Model Selection
 sam2_checkpoint = "./programs/sam2/checkpoints/sam2.1_hiera_large.pt"
@@ -96,144 +99,113 @@ elif device.type == "mps":
 
 # Processing and predicting on each line
 
+from collections import defaultdict
+
+# --- Group fish by video filename ---
+videos_dict = defaultdict(list)
 for fish in fish_array:
+    videos_dict[fish.filename].append(fish)
 
-    # Converting video into jpegs 
-    # Select every nth frame
-    n = 10
+##################################################################################################################################
+# Process each video
+for video_path, fish_list in videos_dict.items():
+    print(f"\nProcessing video: {video_path} ({len(fish_list)} objects)")
 
-    subprocess.run(["ffmpeg",
-            "-i",
-            fish.filename,
-            "-vf",
-            'select=not(mod(n\\,' + str(n) + '))',
-            "-vsync",
-            "vfr",
-            f"{TEMP_DIR}/%05d.jpg"], check=True)
+    # Convert video into JPEGs
+    subprocess.run([
+        "ffmpeg",
+        "-i", video_path,
+        "-filter:v", f"fps={target_fps}",  # use n to downsample, e.g., n=2 gives 15 fps
+        "-vsync", "cfr",
+        f"{TEMP_DIR}/%05d.jpg"
+    ], check=True)
 
-    # Scanning each jpeg
-    frame_names = [
-        p for p in os.listdir(TEMP_DIR)
-        if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
-    ]
-    frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
+    # Collect frame names
+    frame_names = sorted(
+        [p for p in os.listdir(TEMP_DIR) if p.lower().endswith((".jpg", ".jpeg"))],
+        key=lambda p: int(os.path.splitext(p)[0])
+    )
 
-    # Initializing predictor
+    # Initialize predictor once
     from sam2.build_sam import build_sam2_video_predictor
     predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
     inference_state = predictor.init_state(
         video_path=TEMP_DIR,
         offload_video_to_cpu=True,
-        offload_state_to_cpu=False,
+        offload_state_to_cpu=True,
     )
 
-    # Helper functions
-    def add_point(frame, obj, points_arr, labels_arr, display):
+    # Add points for all fish objects
+    def add_point(frame, obj, points_arr, labels_arr):
         points = np.array(points_arr, dtype=np.float32)
         labels = np.array(labels_arr, np.int32)
-        # prompts[obj] = points, labels
-        _, out_obj_ids, out_mask_logits = predictor.add_new_points_or_box(
-            inference_state = inference_state,
-            frame_idx = frame,
-            obj_id = obj,
-            points = points,
-            labels = labels,
+        predictor.add_new_points_or_box(
+            inference_state=inference_state,
+            frame_idx=frame,
+            obj_id=int(obj),
+            points=points,
+            labels=labels,
         )
-    def propagate(vis_frame_stride, display):
-    # run propagation throughout the video and collect the results in a dict
-        video_segments = {}  # video_segments contains the per-frame segmentation results
+
+    for fish in fish_list:
+        for i in range(len(fish.points)):
+            add_point(0, fish.objectID, [fish.points[i]], [fish.labels[i]])
+
+    # Propagate all masks once
+    def propagate():
+        video_segments = {}
         for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(inference_state):
             video_segments[out_frame_idx] = {
                 out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
                 for i, out_obj_id in enumerate(out_obj_ids)
             }
         return video_segments
-    
-    disp = False
-    for i in range(0, len(fish.points)):
-        add_point(0, fish.objectID, [fish.points[i]], [fish.labels[i]], disp)
-    vid_seg = propagate(40, disp)
 
-##################################################################################################################################
+    vid_seg = propagate()
 
-    # Assembling an output video
+    ##################################################################################################################################
+    # Assemble a combined output video
 
-    fish.filename = os.path.splitext(os.path.basename(fish.filename))[0]
+    video_name = os.path.splitext(os.path.basename(video_path))[0]
+    fps = target_fps
 
-    fps = 30
     first_frame = next(iter(vid_seg))
     first_obj = next(iter(vid_seg[first_frame]))
     mask_shape = vid_seg[first_frame][first_obj].shape[-2:]
     height, width = mask_shape
 
-    # # Create a VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    # out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}_bw.mp4", fourcc, fps, (width, height), isColor=True)
+    out_path = f"{OUTPUT_DIR}/{video_name}_combined3.mp4"
+    out = cv2.VideoWriter(out_path, fourcc, fps, (width, height), isColor=True)
 
-    # # Iterate over frames in order
-    # for frame_idx in sorted(vid_seg.keys()):
-    #     # Combine masks for all objects (e.g., OR them together)
-    #     combined_mask = np.zeros((height, width), dtype=np.uint8)
-    #     for obj_id, mask in vid_seg[frame_idx].items(): # Can change this to iterate over specific object id(s)
-    #         # mask shape: (1, H, W) or (H, W)
-    #         mask_bin = mask.squeeze().astype(np.uint8) * 255
-    #         combined_mask = np.maximum(combined_mask, mask_bin)
-    #     # Convert to 3-channel image for video
-    #     mask_rgb = cv2.cvtColor(combined_mask, cv2.COLOR_GRAY2BGR)
-    #     out.write(mask_rgb)
-
-    # out.release()
-    # print(f"Video saved to {OUTPUT_DIR}")
-
-    # Get frame size and fps from previous variables
-    frame_size = (width, height)
-
-    # Create VideoWriter for the final video
-    final_out = cv2.VideoWriter(f"{OUTPUT_DIR}/{fish.filename}_{fish.objectID}.mp4", fourcc, fps, frame_size, isColor=True)
-
-    # Define a list of distinct colors for up to 10 objects (B, G, R)
+    # Assign distinct colors per object ID
     object_colors = [
-        (0, 255, 0),      # Green
-        (0, 0, 255),      # Red
-        (255, 0, 0),      # Blue
-        (0, 255, 255),    # Yellow
-        (255, 0, 255),    # Magenta
-        (255, 255, 0),    # Cyan
-        (128, 128, 0),    # Olive
-        (128, 0, 128),    # Purple
-        (0, 128, 128),    # Teal
-        (255, 128, 0),    # Orange
+        (0, 255, 0), (0, 0, 255), (255, 0, 0),
+        (0, 255, 255), (255, 0, 255), (255, 255, 0),
+        (128, 128, 0), (128, 0, 128), (0, 128, 128),
+        (255, 128, 0)
     ]
-
-    # Alpha blending factor for mask overlay
     alpha = 0.4
 
-    for frame_idx in tqdm(sorted(vid_seg.keys()), desc="Creating final video"):
-        # Load original frame
+    for frame_idx in tqdm(sorted(vid_seg.keys()), desc=f"Rendering {video_name}"):
         frame_path = os.path.join(TEMP_DIR, frame_names[frame_idx])
         frame = cv2.imread(frame_path)
         if frame is None:
             continue
 
-        # Create a color mask for all objects
         color_mask = np.zeros_like(frame)
         for i, (obj_id, mask) in enumerate(vid_seg[frame_idx].items()):
             mask_bin = mask.squeeze().astype(np.uint8)
             color = object_colors[i % len(object_colors)]
             color_mask[mask_bin > 0] = color
 
-        # Blend mask with original frame
         blended = cv2.addWeighted(frame, 1 - alpha, color_mask, alpha, 0)
+        out.write(blended)
 
-        final_out.write(blended)
+    out.release()
+    print(f"✅ Combined video saved to {out_path}")
 
-    final_out.release()
-    print(f"Final video saved to {OUTPUT_DIR}")
-
-##################################################################################################################################
-
-    # Cleaning out memory
-    del predictor
-    del inference_state
-    del vid_seg
+    ##################################################################################################################################
+    # Cleanup
+    del predictor, inference_state, vid_seg
     torch.cuda.empty_cache()
