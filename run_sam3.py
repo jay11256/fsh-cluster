@@ -9,23 +9,16 @@ CLIP_NAME = os.path.splitext(os.path.basename(video_path))[0]
 OUTPUT_DIR = f"jason/outputs"
 CREATE_OUTPUT_VID = False
 
-## Global Variables ##
-# TARGET_FPS = 25
-# CLIP_NAME = "60min_clip548"
-# OUTPUT_DIR = f"jason/{CLIP_NAME}_output"
-# video_path = f"./processed_data/dataset2/{CLIP_NAME}.mp4" # "video_path" needs to be either a JPEG folder or a MP4 video fileF
-# prompt = "fish"
-# inference_frame_start = 0
-
-## Set Up ##
+# region Setup
 import sam3
 import torch
 sam3_root = os.path.join(os.path.dirname(sam3.__file__), "..")
 gpus_to_use = range(torch.cuda.device_count())
 from sam3.model_builder import build_sam3_video_predictor
 predictor = build_sam3_video_predictor(gpus_to_use=gpus_to_use)
+# endregion
 
-## Helper Stuff ##
+# region Helper Functions #
 import glob
 import cv2
 import matplotlib.pyplot as plt
@@ -68,8 +61,9 @@ def abs_to_rel_coords(coords, IMG_WIDTH, IMG_HEIGHT, coord_type="point"):
         ]
     else:
         raise ValueError(f"Unknown coord_type: {coord_type}")
-    
-## Loading Video ##
+# endregion
+
+# region Loading Video
 # load "video_frames_for_vis" for visualization purposes (they are not used by the model)
 if isinstance(video_path, str) and video_path.endswith(".mp4"):
     cap = cv2.VideoCapture(video_path)
@@ -95,8 +89,9 @@ else:
             f"falling back to lexicographic sort."
         )
         video_frames_for_vis.sort()
+# endregion
 
-## SAM3 Inference ##
+# region SAM3 Inference
 response = predictor.handle_request(
     request=dict(
         type="start_session",
@@ -126,6 +121,7 @@ response = predictor.handle_request(
 out = response["outputs"]
 outputs_per_frame = propagate_in_video(predictor, session_id)
 outputs_per_frame = prepare_masks_for_visualization(outputs_per_frame)
+# endregion
 
 ## Initializing video library stuff ##
 from tqdm import tqdm
@@ -134,42 +130,35 @@ if CREATE_OUTPUT_VID:
 video_name = os.path.splitext(os.path.basename(video_path))[0]
 vid_seg = outputs_per_frame
 
-
-# ========================
-# Save centroids
-# ========================
+# Processing Masks
 
 import pickle
 import torch
 
+# ========================
+# region Centroids (pred_tracks)
+# ========================
 if CREATE_OUTPUT_VID:
     CENTROID_PATH = os.path.join(f"{OUTPUT_DIR}/{CLIP_NAME}_output", "centroids.pkl")
 else:
     CENTROID_PATH = os.path.join(OUTPUT_DIR, f"{CLIP_NAME}.pkl")
-
 centroids = {}
-
 for frame_idx, objs in vid_seg.items():
     centroids[frame_idx] = {}
 
     for obj_id, mask in objs.items():
         if mask is None:
             continue
-
         mask = np.asarray(mask)
         if mask.ndim == 3:
             mask = mask[0]
-
         if mask.ndim != 2:
             continue
-
         ys, xs = np.where(mask > 0)
         if len(xs) == 0:
             continue
-
         cx = xs.mean()
         cy = ys.mean()
-
         centroids[frame_idx][obj_id] = (float(cx), float(cy))
 
 # Convert to tensor maybe
@@ -200,21 +189,29 @@ for frame_idx, frame_data in centroids.items():
 
 # Convert to torch tensor
 tracks = torch.from_numpy(arr)
+# ========================
+# endregion
+# ========================
 
-# Save in same pickle structure
+# ========================
+# region Visibility (pred_visibility)
+# ========================
+
+# ========================
+# endregion
+# ========================
+
+# Saving pickle
 output = {
-    "pred_tracks": tracks
+    "pred_tracks": tracks,
+    "pred_visibility": 1,
+    "obj_ids": 1,
+    "point_queries": 1
 }
-
 with open(CENTROID_PATH, "wb") as f:
     pickle.dump(output, f)
-
 print(f"Centroids saved to {CENTROID_PATH}")
 print("Tensor shape:", tracks.shape)
-
-# ========================
-# ========================
-# ========================
 
 ## Creating an output video ##
 if CREATE_OUTPUT_VID:
