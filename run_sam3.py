@@ -1,5 +1,7 @@
 import os
 import sys
+import pickle
+import torch
 
 TARGET_FPS = 25
 video_path = sys.argv[1]
@@ -123,21 +125,15 @@ outputs_per_frame = propagate_in_video(predictor, session_id)
 outputs_per_frame = prepare_masks_for_visualization(outputs_per_frame)
 # endregion
 
-## Initializing video library stuff ##
+# region Initializing video library stuff
 from tqdm import tqdm
 if CREATE_OUTPUT_VID:
     os.makedirs(f"{OUTPUT_DIR}/{CLIP_NAME}_output", exist_ok=True)
 video_name = os.path.splitext(os.path.basename(video_path))[0]
 vid_seg = outputs_per_frame
+# endregion
 
-# Processing Masks
-
-import pickle
-import torch
-
-# ========================
 # region Centroids (pred_tracks)
-# ========================
 if CREATE_OUTPUT_VID:
     CENTROID_PATH = os.path.join(f"{OUTPUT_DIR}/{CLIP_NAME}_output", "centroids.pkl")
 else:
@@ -178,35 +174,50 @@ num_objects = len(all_obj_ids)
 # Map object ID → tensor index
 obj_id_to_idx = {obj_id: idx for idx, obj_id in enumerate(all_obj_ids)}
 
-# Initialize array with NaNs (for missing detections)
-arr = np.full((num_objects, num_frames, 2), np.nan, dtype=np.float32)
+# Initialize array with -1s (for missing detections)
+arr = np.full((num_frames, num_objects, 2), -1, dtype=np.float32)
 
 # Fill array
 for frame_idx, frame_data in centroids.items():
     for obj_id, (cx, cy) in frame_data.items():
         obj_idx = obj_id_to_idx[obj_id]
-        arr[obj_idx, frame_idx] = [cx, cy]
+        arr[frame_idx, obj_idx] = [cx, cy]
+
+# If coordinate is unknown, use the last known coordinate (forward filling)
+for obj_idx in range(num_objects):
+    last_value = None
+    for t in range(num_frames):
+        if arr[t, obj_idx, 0] != -1:
+            last_value = arr[t, obj_idx]
+        elif last_value is not None:
+            arr[t, obj_idx] = last_value
 
 # Convert to torch tensor
 tracks = torch.from_numpy(arr)
-# ========================
 # endregion
-# ========================
 
-# ========================
 # region Visibility (pred_visibility)
-# ========================
-
-# ========================
+visibility = torch.full((num_frames, num_objects), True) # temporary, assumes each centroid is always visible
 # endregion
-# ========================
+
+# region IDs (obj_ids)
+ids = torch.tensor(all_obj_ids)
+# endregion
+
+# region Queries (point_queries)
+valid = arr[:, :, 0] != -1
+first_appearance = np.argmax(valid, axis = 0)
+never_appeared = ~valid.any(axis = 0)
+first_appearance[never_appeared] = -1
+queries = torch.from_numpy(first_appearance)
+# endregion
 
 # Saving pickle
 output = {
     "pred_tracks": tracks,
-    "pred_visibility": 1,
-    "obj_ids": 1,
-    "point_queries": 1
+    "pred_visibility": visibility,
+    "obj_ids": ids,
+    "point_queries": queries
 }
 with open(CENTROID_PATH, "wb") as f:
     pickle.dump(output, f)
