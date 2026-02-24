@@ -10,7 +10,7 @@ parser.add_argument("video_path", type=str, help="Path to the video file")
 parser.add_argument("--prompt", type=str, default="fish", help="Text prompt for segmentation")
 parser.add_argument("--max_objects", type=int, default=2, help="Maximum number of objects to track (default: 2)")
 parser.add_argument("--target_fps", type=int, default=25, help="Target FPS for video processing")
-parser.add_argument("--output_dir", type=str, default="jason/outputs", help="Output directory")
+parser.add_argument("--output_dir", type=str, default="./", help="Output directory")
 parser.add_argument("--create_output_vid", action="store_true", help="Create output video")
 parser.add_argument("--inference_frame_start", type=int, default=0, help="Frame to start inference")
 
@@ -218,53 +218,25 @@ else:
     primary_obj_ids = [obj_id for obj_id, _ in sorted_objects[:MAX_OBJECTS]]
     extra_obj_ids = [obj_id for obj_id, _ in sorted_objects[MAX_OBJECTS:]]
     
-    print(f"Primary objects: {primary_obj_ids}")
-    print(f"Extra objects to merge: {extra_obj_ids}")
+    print(f"Primary objects (will be tracked): {primary_obj_ids}")
+    print(f"Extra objects (will be ignored): {extra_obj_ids}")
     
-    # Step 4: Create mapping from old object IDs to new slots
-    obj_id_to_slot = {}
-    for slot_idx, obj_id in enumerate(primary_obj_ids):
-        obj_id_to_slot[obj_id] = slot_idx
-    
-    # Step 5: For extra objects, assign them to the slot that is less frequently visible
-    # This maintains at least MAX_OBJECTS visible at any time
-    for extra_obj_id in extra_obj_ids:
-        # Count visibility for each slot
-        visibility_per_slot = {i: 0 for i in range(MAX_OBJECTS)}
-        for frame_idx in sorted(centroids.keys()):
-            for slot, primary_obj_id in enumerate(primary_obj_ids):
-                if primary_obj_id in centroids[frame_idx]:
-                    visibility_per_slot[slot] += 1
-        
-        # Assign extra object to the slot with lowest visibility
-        target_slot = min(visibility_per_slot, key=visibility_per_slot.get)
-        obj_id_to_slot[extra_obj_id] = target_slot
-        print(f"  Assigning extra object {extra_obj_id} to slot {target_slot}")
-    
-    # Step 6: Rebuild centroids with merged objects
+    # Step 4: Build processed centroids with ONLY primary objects
+    # Extra objects are completely ignored
     processed_centroids = {}
     for frame_idx in sorted(centroids.keys()):
         processed_centroids[frame_idx] = {}
         
-        # Group objects by slot
-        slot_data = {i: [] for i in range(MAX_OBJECTS)}
-        for obj_id, (cx, cy) in centroids[frame_idx].items():
-            if obj_id in obj_id_to_slot:
-                slot = obj_id_to_slot[obj_id]
-                slot_data[slot].append((cx, cy))
-        
-        # Average centroids in each slot
-        for slot in range(MAX_OBJECTS):
-            if slot_data[slot]:
-                avg_cx = np.mean([cx for cx, cy in slot_data[slot]])
-                avg_cy = np.mean([cy for cx, cy in slot_data[slot]])
-                processed_centroids[frame_idx][slot] = (float(avg_cx), float(avg_cy))
+        # Only include primary objects
+        for obj_id in primary_obj_ids:
+            if obj_id in centroids[frame_idx]:
+                processed_centroids[frame_idx][obj_id] = centroids[frame_idx][obj_id]
 
 # Sort frames
 frame_indices = sorted(processed_centroids.keys())
 num_frames = max(frame_indices) + 1
 
-# Collect unique object IDs (should now be at most MAX_OBJECTS)
+# Collect unique object IDs (should now be exactly MAX_OBJECTS or fewer)
 all_obj_ids = sorted({
     obj_id
     for frame_data in processed_centroids.values()
@@ -272,7 +244,7 @@ all_obj_ids = sorted({
 })
 
 num_objects = len(all_obj_ids)
-print(f"After post-processing: {num_objects} objects")
+print(f"After post-processing: {num_objects} objects in pkl file")
 
 # Map object ID → tensor index
 obj_id_to_idx = {obj_id: idx for idx, obj_id in enumerate(all_obj_ids)}
@@ -285,6 +257,15 @@ for frame_idx, frame_data in processed_centroids.items():
     for obj_id, (cx, cy) in frame_data.items():
         obj_idx = obj_id_to_idx[obj_id]
         arr[frame_idx, obj_idx] = [cx, cy]
+
+# If coordinate is unknown, use the last known coordinate (forward filling)
+for obj_idx in range(num_objects):
+    last_value = None
+    for t in range(num_frames):
+        if arr[t, obj_idx, 0] != -1:
+            last_value = arr[t, obj_idx]
+        elif last_value is not None:
+            arr[t, obj_idx] = last_value
 
 # Convert to torch tensor
 tracks = torch.from_numpy(arr)
