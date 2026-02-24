@@ -2,14 +2,30 @@ import os
 import sys
 import pickle
 import torch
+import argparse
 
-TARGET_FPS = 25
-video_path = sys.argv[1]
-prompt = "fish"
-inference_frame_start = 0
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="SAM3 video segmentation with object tracking")
+parser.add_argument("video_path", type=str, help="Path to the video file")
+parser.add_argument("--prompt", type=str, default="fish", help="Text prompt for segmentation")
+parser.add_argument("--max_objects", type=int, default=2, help="Maximum number of objects to track (default: 2)")
+parser.add_argument("--target_fps", type=int, default=25, help="Target FPS for video processing")
+parser.add_argument("--output_dir", type=str, default="jason/outputs", help="Output directory")
+parser.add_argument("--create_output_vid", action="store_true", help="Create output video")
+parser.add_argument("--inference_frame_start", type=int, default=0, help="Frame to start inference")
+
+args = parser.parse_args()
+
+TARGET_FPS = args.target_fps
+video_path = args.video_path
+prompt = args.prompt
+MAX_OBJECTS = args.max_objects  # <-- NEW PARAMETER
+inference_frame_start = args.inference_frame_start
 CLIP_NAME = os.path.splitext(os.path.basename(video_path))[0]
-OUTPUT_DIR = f"jason/outputs"
-CREATE_OUTPUT_VID = False
+OUTPUT_DIR = args.output_dir
+CREATE_OUTPUT_VID = args.create_output_vid
+
+print(f"Maximum objects to track: {MAX_OBJECTS}")
 
 # region Setup
 import sam3
@@ -138,6 +154,7 @@ if CREATE_OUTPUT_VID:
     CENTROID_PATH = os.path.join(f"{OUTPUT_DIR}/{CLIP_NAME}_output", "centroids.pkl")
 else:
     CENTROID_PATH = os.path.join(OUTPUT_DIR, f"{CLIP_NAME}.pkl")
+
 centroids = {}
 for frame_idx, objs in vid_seg.items():
     centroids[frame_idx] = {}
@@ -157,19 +174,105 @@ for frame_idx, objs in vid_seg.items():
         cy = ys.mean()
         centroids[frame_idx][obj_id] = (float(cx), float(cy))
 
-# Convert to tensor maybe
-# Sort frames
-frame_indices = sorted(centroids.keys())
-num_frames = max(frame_indices) + 1
+# Post-process: Enforce max objects with temporal consistency
+print(f"Post-processing centroids to enforce max {MAX_OBJECTS} objects...")
 
-# Collect unique object IDs
-all_obj_ids = sorted({
+# Step 1: Collect all unique object IDs across all frames
+all_obj_ids_original = sorted({
     obj_id
     for frame_data in centroids.values()
     for obj_id in frame_data.keys()
 })
 
+print(f"Found {len(all_obj_ids_original)} unique objects: {all_obj_ids_original}")
+
+# If we already have MAX_OBJECTS or fewer, no need to post-process
+if len(all_obj_ids_original) <= MAX_OBJECTS:
+    print(f"Already have {MAX_OBJECTS} or fewer objects, skipping post-processing")
+    processed_centroids = centroids
+else:
+    # Step 2: Track object trajectories to maintain temporal consistency
+    # Build trajectory for each object
+    trajectories = {}
+    for obj_id in all_obj_ids_original:
+        trajectory = []
+        for frame_idx in sorted(centroids.keys()):
+            if obj_id in centroids[frame_idx]:
+                trajectory.append((frame_idx, centroids[frame_idx][obj_id]))
+            else:
+                trajectory.append((frame_idx, None))
+        trajectories[obj_id] = trajectory
+    
+    # Step 3: Assign objects to slots based on first appearance and consistency
+    # Use greedy assignment: prioritize objects that appear earliest and most frequently
+    object_scores = {}
+    for obj_id in all_obj_ids_original:
+        # Score = number of frames with detection
+        appearances = sum(1 for frame_idx, pos in trajectories[obj_id] if pos is not None)
+        # Early appearance bonus
+        first_appearance = next((i for i, (_, pos) in enumerate(trajectories[obj_id]) if pos is not None), float('inf'))
+        object_scores[obj_id] = (appearances, -first_appearance, obj_id)  # negative first_appearance for sorting
+    
+    # Sort by score and assign first MAX_OBJECTS to slots
+    sorted_objects = sorted(object_scores.items(), key=lambda x: x[1], reverse=True)
+    primary_obj_ids = [obj_id for obj_id, _ in sorted_objects[:MAX_OBJECTS]]
+    extra_obj_ids = [obj_id for obj_id, _ in sorted_objects[MAX_OBJECTS:]]
+    
+    print(f"Primary objects: {primary_obj_ids}")
+    print(f"Extra objects to merge: {extra_obj_ids}")
+    
+    # Step 4: Create mapping from old object IDs to new slots
+    obj_id_to_slot = {}
+    for slot_idx, obj_id in enumerate(primary_obj_ids):
+        obj_id_to_slot[obj_id] = slot_idx
+    
+    # Step 5: For extra objects, assign them to the slot that is less frequently visible
+    # This maintains at least MAX_OBJECTS visible at any time
+    for extra_obj_id in extra_obj_ids:
+        # Count visibility for each slot
+        visibility_per_slot = {i: 0 for i in range(MAX_OBJECTS)}
+        for frame_idx in sorted(centroids.keys()):
+            for slot, primary_obj_id in enumerate(primary_obj_ids):
+                if primary_obj_id in centroids[frame_idx]:
+                    visibility_per_slot[slot] += 1
+        
+        # Assign extra object to the slot with lowest visibility
+        target_slot = min(visibility_per_slot, key=visibility_per_slot.get)
+        obj_id_to_slot[extra_obj_id] = target_slot
+        print(f"  Assigning extra object {extra_obj_id} to slot {target_slot}")
+    
+    # Step 6: Rebuild centroids with merged objects
+    processed_centroids = {}
+    for frame_idx in sorted(centroids.keys()):
+        processed_centroids[frame_idx] = {}
+        
+        # Group objects by slot
+        slot_data = {i: [] for i in range(MAX_OBJECTS)}
+        for obj_id, (cx, cy) in centroids[frame_idx].items():
+            if obj_id in obj_id_to_slot:
+                slot = obj_id_to_slot[obj_id]
+                slot_data[slot].append((cx, cy))
+        
+        # Average centroids in each slot
+        for slot in range(MAX_OBJECTS):
+            if slot_data[slot]:
+                avg_cx = np.mean([cx for cx, cy in slot_data[slot]])
+                avg_cy = np.mean([cy for cx, cy in slot_data[slot]])
+                processed_centroids[frame_idx][slot] = (float(avg_cx), float(avg_cy))
+
+# Sort frames
+frame_indices = sorted(processed_centroids.keys())
+num_frames = max(frame_indices) + 1
+
+# Collect unique object IDs (should now be at most MAX_OBJECTS)
+all_obj_ids = sorted({
+    obj_id
+    for frame_data in processed_centroids.values()
+    for obj_id in frame_data.keys()
+})
+
 num_objects = len(all_obj_ids)
+print(f"After post-processing: {num_objects} objects")
 
 # Map object ID → tensor index
 obj_id_to_idx = {obj_id: idx for idx, obj_id in enumerate(all_obj_ids)}
@@ -178,26 +281,22 @@ obj_id_to_idx = {obj_id: idx for idx, obj_id in enumerate(all_obj_ids)}
 arr = np.full((num_frames, num_objects, 2), -1, dtype=np.float32)
 
 # Fill array
-for frame_idx, frame_data in centroids.items():
+for frame_idx, frame_data in processed_centroids.items():
     for obj_id, (cx, cy) in frame_data.items():
         obj_idx = obj_id_to_idx[obj_id]
         arr[frame_idx, obj_idx] = [cx, cy]
-
-# If coordinate is unknown, use the last known coordinate (forward filling)
-for obj_idx in range(num_objects):
-    last_value = None
-    for t in range(num_frames):
-        if arr[t, obj_idx, 0] != -1:
-            last_value = arr[t, obj_idx]
-        elif last_value is not None:
-            arr[t, obj_idx] = last_value
 
 # Convert to torch tensor
 tracks = torch.from_numpy(arr)
 # endregion
 
 # region Visibility (pred_visibility)
-visibility = torch.full((num_frames, num_objects), True) # temporary, assumes each centroid is always visible
+visibility = torch.full((num_frames, num_objects), True)
+# Mark as False where coordinates are -1 (never appeared)
+for obj_idx in range(num_objects):
+    for t in range(num_frames):
+        if arr[t, obj_idx, 0] == -1:
+            visibility[t, obj_idx] = False
 # endregion
 
 # region IDs (obj_ids)
