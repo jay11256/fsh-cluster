@@ -82,10 +82,11 @@ def abs_to_rel_coords(coords, IMG_WIDTH, IMG_HEIGHT, coord_type="point"):
 
 
 def get_uniform_points(mask, n_points=9):
-    """Extract n_points uniformly distributed across a binary mask using a 3x3 grid.
+    """Extract n_points uniformly distributed across a binary mask using a grid approach.
 
-    Divides the mask bounding box into a grid and samples the mean of mask
-    pixels within each cell. Falls back to the nearest mask pixel for empty cells.
+    Divides the mask bounding box into a sqrt(n) x sqrt(n) grid and samples
+    the mean of mask pixels within each cell. Falls back to the nearest mask
+    pixel for any cell that contains no mask pixels.
 
     Args:
         mask: 2D binary numpy array
@@ -204,15 +205,14 @@ video_name = os.path.splitext(os.path.basename(video_path))[0]
 vid_seg = outputs_per_frame
 # endregion
 
-# region Centroids (pred_tracks) — PKL shape is unchanged (centroid per object)
+# region Points (pred_tracks) — (frames, objects*9, 2) flattened
 if CREATE_OUTPUT_VID:
     CENTROID_PATH = os.path.join(f"{OUTPUT_DIR}/{CLIP_NAME}_output", "centroids.pkl")
 else:
     CENTROID_PATH = os.path.join(OUTPUT_DIR, f"{CLIP_NAME}.pkl")
 
-centroids = {}
-# Parallel structure holding 9 points per object — used only for video rendering
-points_9 = {}
+centroids = {}  # used only for temporal post-processing / object selection
+points_9 = {}   # 9 points per object — goes into PKL and video rendering
 
 for frame_idx, objs in vid_seg.items():
     centroids[frame_idx] = {}
@@ -230,12 +230,12 @@ for frame_idx, objs in vid_seg.items():
         if len(xs) == 0:
             continue
 
-        # Centroid — unchanged, still goes into PKL
+        # Centroid — used only for object selection / post-processing logic
         cx = xs.mean()
         cy = ys.mean()
         centroids[frame_idx][obj_id] = (float(cx), float(cy))
 
-        # 9 uniform points — video rendering only
+        # 9 uniform points — goes into PKL and video rendering
         pts = get_uniform_points(mask, n_points=9)
         if pts is not None:
             points_9[frame_idx][obj_id] = pts
@@ -310,65 +310,70 @@ all_obj_ids = sorted({
 })
 
 num_objects = len(all_obj_ids)
+NUM_POINTS = 9
 print(f"After post-processing: {num_objects} objects in pkl file")
 
 # Map object ID → tensor index
 obj_id_to_idx = {obj_id: idx for idx, obj_id in enumerate(all_obj_ids)}
 
-# Initialize array with -1s (for missing detections)
-arr = np.full((num_frames, num_objects, 2), -1, dtype=np.float32)
+# Initialize array with -1s — shape (frames, objects*9, 2)
+# Object i occupies columns i*9 .. i*9+8
+arr = np.full((num_frames, num_objects * NUM_POINTS, 2), -1, dtype=np.float32)
 
-# Fill array
-for frame_idx, frame_data in processed_centroids.items():
-    for obj_id, (cx, cy) in frame_data.items():
+# Fill array — no forward-filling; -1 means not visible
+for frame_idx in sorted(points_9.keys()):
+    for obj_id, pts in points_9[frame_idx].items():
+        if obj_id not in obj_id_to_idx:
+            continue  # skip extra objects pruned during post-processing
         obj_idx = obj_id_to_idx[obj_id]
-        arr[frame_idx, obj_idx] = [cx, cy]
-
-# If coordinate is unknown, use the last known coordinate (forward filling)
-for obj_idx in range(num_objects):
-    last_value = None
-    for t in range(num_frames):
-        if arr[t, obj_idx, 0] != -1:
-            last_value = arr[t, obj_idx]
-        elif last_value is not None:
-            arr[t, obj_idx] = last_value
+        for pt_idx, (px, py) in enumerate(pts):
+            col = obj_idx * NUM_POINTS + pt_idx
+            arr[frame_idx, col] = [px, py]
 
 # Convert to torch tensor
 tracks = torch.from_numpy(arr)
 # endregion
 
-# region Visibility (pred_visibility)
-visibility = torch.full((num_frames, num_objects), True)
-# Mark as False where coordinates are -1 (never appeared)
-for obj_idx in range(num_objects):
-    for t in range(num_frames):
-        if arr[t, obj_idx, 0] == -1:
-            visibility[t, obj_idx] = False
+# region Visibility (pred_visibility) — (frames, objects), one flag per object
+# An object is visible in a frame if any of its 9 points were detected
+visibility = torch.zeros((num_frames, num_objects), dtype=torch.bool)
+for frame_idx in sorted(points_9.keys()):
+    for obj_id in points_9[frame_idx]:
+        if obj_id in obj_id_to_idx:
+            obj_idx = obj_id_to_idx[obj_id]
+            visibility[frame_idx, obj_idx] = True
 # endregion
 
 # region IDs (obj_ids)
 ids = torch.tensor(all_obj_ids)
 # endregion
 
-# region Queries (point_queries)
-valid = arr[:, :, 0] != -1
-first_appearance = np.argmax(valid, axis = 0)
-never_appeared = ~valid.any(axis = 0)
-first_appearance[never_appeared] = -1
-queries = torch.from_numpy(first_appearance)
+# region Queries (point_queries) — (objects, 9): first-appearance frame per point slot
+queries = np.full((num_objects, NUM_POINTS), -1, dtype=np.int64)
+for frame_idx in sorted(points_9.keys()):
+    for obj_id, pts in points_9[frame_idx].items():
+        if obj_id not in obj_id_to_idx:
+            continue
+        obj_idx = obj_id_to_idx[obj_id]
+        for pt_idx in range(len(pts)):
+            if queries[obj_idx, pt_idx] == -1:
+                queries[obj_idx, pt_idx] = frame_idx
+queries = torch.from_numpy(queries)
 # endregion
 
-# Saving pickle — shape unchanged (centroid-based, as before)
+# Saving pickle
 output = {
-    "pred_tracks": tracks,
-    "pred_visibility": visibility,
-    "obj_ids": ids,
-    "point_queries": queries
+    "pred_tracks": tracks,        # (frames, objects*9, 2)
+    "pred_visibility": visibility, # (frames, objects)
+    "obj_ids": ids,                # (objects,)
+    "point_queries": queries       # (objects, 9)
 }
 with open(CENTROID_PATH, "wb") as f:
     pickle.dump(output, f)
-print(f"Centroids saved to {CENTROID_PATH}")
-print("Tensor shape:", tracks.shape)
+print(f"Saved to {CENTROID_PATH}")
+print("pred_tracks shape:", tracks.shape)
+print("pred_visibility shape:", visibility.shape)
+print("point_queries shape:", queries.shape)
 
 ## Creating an output video ##
 if CREATE_OUTPUT_VID:
