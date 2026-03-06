@@ -79,6 +79,61 @@ def abs_to_rel_coords(coords, IMG_WIDTH, IMG_HEIGHT, coord_type="point"):
         ]
     else:
         raise ValueError(f"Unknown coord_type: {coord_type}")
+
+
+def get_uniform_points(mask, n_points=9):
+    """Extract n_points uniformly distributed across a binary mask using a 3x3 grid.
+
+    Divides the mask bounding box into a grid and samples the mean of mask
+    pixels within each cell. Falls back to the nearest mask pixel for empty cells.
+
+    Args:
+        mask: 2D binary numpy array
+        n_points: number of points (must be a perfect square, e.g. 9)
+
+    Returns:
+        List of (x, y) tuples of length n_points, or None if mask is empty.
+    """
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
+        return None
+
+    grid = int(round(n_points ** 0.5))  # 3 for 9 points
+
+    x_min, x_max = int(xs.min()), int(xs.max())
+    y_min, y_max = int(ys.min()), int(ys.max())
+
+    mask_coords = np.stack([xs, ys], axis=1).astype(np.float32)  # (N, 2)
+
+    points = []
+    for row in range(grid):
+        for col in range(grid):
+            x_lo = x_min + col       * (x_max - x_min + 1) / grid
+            x_hi = x_min + (col + 1) * (x_max - x_min + 1) / grid
+            y_lo = y_min + row       * (y_max - y_min + 1) / grid
+            y_hi = y_min + (row + 1) * (y_max - y_min + 1) / grid
+
+            in_cell = (
+                (mask_coords[:, 0] >= x_lo) & (mask_coords[:, 0] < x_hi) &
+                (mask_coords[:, 1] >= y_lo) & (mask_coords[:, 1] < y_hi)
+            )
+            cell_coords = mask_coords[in_cell]
+
+            if len(cell_coords) > 0:
+                px = float(cell_coords[:, 0].mean())
+                py = float(cell_coords[:, 1].mean())
+            else:
+                # Nearest mask pixel to cell centre
+                gx = (x_lo + x_hi) / 2
+                gy = (y_lo + y_hi) / 2
+                dists = np.sqrt((mask_coords[:, 0] - gx) ** 2 + (mask_coords[:, 1] - gy) ** 2)
+                nearest = np.argmin(dists)
+                px = float(mask_coords[nearest, 0])
+                py = float(mask_coords[nearest, 1])
+
+            points.append((px, py))
+
+    return points  # 9 x (x, y)
 # endregion
 
 # region Loading Video
@@ -149,15 +204,19 @@ video_name = os.path.splitext(os.path.basename(video_path))[0]
 vid_seg = outputs_per_frame
 # endregion
 
-# region Centroids (pred_tracks)
+# region Centroids (pred_tracks) — PKL shape is unchanged (centroid per object)
 if CREATE_OUTPUT_VID:
     CENTROID_PATH = os.path.join(f"{OUTPUT_DIR}/{CLIP_NAME}_output", "centroids.pkl")
 else:
     CENTROID_PATH = os.path.join(OUTPUT_DIR, f"{CLIP_NAME}.pkl")
 
 centroids = {}
+# Parallel structure holding 9 points per object — used only for video rendering
+points_9 = {}
+
 for frame_idx, objs in vid_seg.items():
     centroids[frame_idx] = {}
+    points_9[frame_idx] = {}
 
     for obj_id, mask in objs.items():
         if mask is None:
@@ -170,9 +229,16 @@ for frame_idx, objs in vid_seg.items():
         ys, xs = np.where(mask > 0)
         if len(xs) == 0:
             continue
+
+        # Centroid — unchanged, still goes into PKL
         cx = xs.mean()
         cy = ys.mean()
         centroids[frame_idx][obj_id] = (float(cx), float(cy))
+
+        # 9 uniform points — video rendering only
+        pts = get_uniform_points(mask, n_points=9)
+        if pts is not None:
+            points_9[frame_idx][obj_id] = pts
 
 # Post-process: Enforce max objects with temporal consistency
 print(f"Post-processing centroids to enforce max {MAX_OBJECTS} objects...")
@@ -292,7 +358,7 @@ first_appearance[never_appeared] = -1
 queries = torch.from_numpy(first_appearance)
 # endregion
 
-# Saving pickle
+# Saving pickle — shape unchanged (centroid-based, as before)
 output = {
     "pred_tracks": tracks,
     "pred_visibility": visibility,
@@ -384,18 +450,20 @@ if CREATE_OUTPUT_VID:
 
                 frame = overlay
 
-            # Draw Centroids
-            if frame_idx in centroids:
-                for obj_id, (cx, cy) in centroids[frame_idx].items():
-
-                    cx = int(cx)
-                    cy = int(cy)
+            # Draw 9 uniform points per object (replaces single centroid dot)
+            if frame_idx in points_9:
+                for obj_id, pts in points_9[frame_idx].items():
 
                     if obj_id not in obj_color_map:
                         obj_color_map[obj_id] = len(obj_color_map) % len(object_colors)
                     color = object_colors[obj_color_map[obj_id]]
 
-                    cv2.circle(frame, (cx, cy), 6, color, -1)
+                    for i, (px, py) in enumerate(pts):
+                        px, py = int(px), int(py)
+                        # Centre point (index 4 in a 3x3 grid) slightly larger
+                        radius = 7 if i == 4 else 4
+                        cv2.circle(frame, (px, py), radius, color, -1)
+                        cv2.circle(frame, (px, py), radius + 1, (0, 0, 0), 1)  # thin black outline
 
             out.write(frame)
             frame_idx += 1
