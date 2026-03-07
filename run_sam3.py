@@ -5,6 +5,7 @@ import torch
 import argparse
 
 # Parse command-line arguments
+#bhargav's args: python ../../fsh-cluster/run_sam3.py 60min_clip547.mp4 --create_output_vid --output_dir ./pklfiles/
 parser = argparse.ArgumentParser(description="SAM3 video segmentation with object tracking")
 parser.add_argument("video_path", type=str, help="Path to the video file")
 parser.add_argument("--prompt", type=str, default="fish", help="Text prompt for segmentation")
@@ -334,46 +335,47 @@ for frame_idx in sorted(points_9.keys()):
 tracks = torch.from_numpy(arr)
 # endregion
 
-# region Visibility (pred_visibility) — (frames, objects), one flag per object
-# An object is visible in a frame if any of its 9 points were detected
-visibility = torch.zeros((num_frames, num_objects), dtype=torch.bool)
-for frame_idx in sorted(points_9.keys()):
-    for obj_id in points_9[frame_idx]:
-        if obj_id in obj_id_to_idx:
-            obj_idx = obj_id_to_idx[obj_id]
-            visibility[frame_idx, obj_idx] = True
+# region Visibility (pred_visibility) — (frames, objects*9), one flag per point
+# A point is visible if its coords are not -1 (i.e. the mask was present that frame)
+vis_arr = (arr[:, :, 0] != -1)  # (frames, objects*9)
+visibility = torch.from_numpy(vis_arr)
 # endregion
 
-# region IDs (obj_ids)
-ids = torch.tensor(all_obj_ids)
+# region IDs (obj_ids) — (objects*9,), each obj_id repeated NUM_POINTS times
+ids = torch.tensor(
+    [obj_id for obj_id in all_obj_ids for _ in range(NUM_POINTS)],
+    dtype=torch.long
+)
 # endregion
 
-# region Queries (point_queries) — (objects, 9): first-appearance frame per point slot
-queries = np.full((num_objects, NUM_POINTS), -1, dtype=np.int64)
+# region Queries (point_queries) — (objects*9,): first-appearance frame per point, flattened
+queries = np.full((num_objects * NUM_POINTS,), -1, dtype=np.int64)
 for frame_idx in sorted(points_9.keys()):
     for obj_id, pts in points_9[frame_idx].items():
         if obj_id not in obj_id_to_idx:
             continue
         obj_idx = obj_id_to_idx[obj_id]
         for pt_idx in range(len(pts)):
-            if queries[obj_idx, pt_idx] == -1:
-                queries[obj_idx, pt_idx] = frame_idx
+            col = obj_idx * NUM_POINTS + pt_idx
+            if queries[col] == -1:
+                queries[col] = frame_idx
 queries = torch.from_numpy(queries)
 # endregion
 
 # Saving pickle
 output = {
-    "pred_tracks": tracks,        # (frames, objects*9, 2)
-    "pred_visibility": visibility, # (frames, objects)
-    "obj_ids": ids,                # (objects,)
-    "point_queries": queries       # (objects, 9)
+    "pred_tracks": tracks.half(),       # (frames, objects*9, 2)
+    "pred_visibility": visibility.bool(), # (frames, objects*9)
+    "obj_ids": ids,                       # (objects*9,)
+    "point_queries": queries              # (objects*9,)
 }
 with open(CENTROID_PATH, "wb") as f:
     pickle.dump(output, f)
 print(f"Saved to {CENTROID_PATH}")
-print("pred_tracks shape:", tracks.shape)
+print("pred_tracks shape:    ", tracks.shape)
 print("pred_visibility shape:", visibility.shape)
-print("point_queries shape:", queries.shape)
+print("obj_ids shape:        ", ids.shape)
+print("point_queries shape:  ", queries.shape)
 
 ## Creating an output video ##
 if CREATE_OUTPUT_VID:
