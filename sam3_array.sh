@@ -9,18 +9,8 @@
 #SBATCH --time=2:00:00
 #SBATCH --array=0-99
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
-<<<<<<< HEAD
-<<<<<<< HEAD
-#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2_%j.txt
-#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2%_j.txt
-=======
-#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl1_%j.txt
-#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl1%_j.txt
->>>>>>> 1523d38 (Add trokens to repo)
-=======
 #SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2_%A_%a.txt
 #SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2%_%A_%a.txt
->>>>>>> 80119d4 (better sam3 logs)
 
 # --mail-user=jliu1230@terpmail.umd.edu
 
