@@ -20,17 +20,10 @@ module load ffmpeg
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate sam3
 
-VIDEO_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
-<<<<<<< HEAD
-SCRIPT=/fs/vulcan-projects/fsh_track/jason/fsh-cluster/run_sam3.py 
-<<<<<<< HEAD
-=======
-SCRIPT=/fs/vulcan-projects/fsh_track/bhargav/fsh-cluster/run_sam3.py 
->>>>>>> 80119d4 (better sam3 logs)
-OUT_DIR=/fs/vulcan-projects/fsh_track/bhargav/data/sam3pkl2
-=======
-OUT_DIR=/fs/vulcan-projects/fsh_track/bhargav/data/sam3pkl1
->>>>>>> 1523d38 (Add trokens to repo)
+
+VIDEO_DIR=../../processed_data/dataset3
+SCRIPT=./run_sam3.py 
+OUT_DIR=../../processed_data/sam3pkl2
 # ------------------------
 
 # Total number of splits = number of array jobs
