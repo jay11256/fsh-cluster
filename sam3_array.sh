@@ -9,8 +9,13 @@
 #SBATCH --time=2:00:00
 #SBATCH --array=0-99
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
+<<<<<<< HEAD
 #SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2_%j.txt
 #SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2%_j.txt
+=======
+#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl1_%j.txt
+#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl1%_j.txt
+>>>>>>> 1523d38 (Add trokens to repo)
 
 # --mail-user=jliu1230@terpmail.umd.edu
 
@@ -22,7 +27,11 @@ conda activate sam3
 
 VIDEO_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
 SCRIPT=/fs/vulcan-projects/fsh_track/jason/fsh-cluster/run_sam3.py 
+<<<<<<< HEAD
 OUT_DIR=/fs/vulcan-projects/fsh_track/bhargav/data/sam3pkl2
+=======
+OUT_DIR=/fs/vulcan-projects/fsh_track/bhargav/data/sam3pkl1
+>>>>>>> 1523d38 (Add trokens to repo)
 # ------------------------
 
 # Total number of splits = number of array jobs
