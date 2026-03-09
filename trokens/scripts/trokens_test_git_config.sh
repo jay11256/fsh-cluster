@@ -1,14 +1,14 @@
 #!/bin/sh
-#SBATCH --job-name=finish_5x5_dataset3
+#SBATCH --job-name=test_git_config
 #SBATCH --ntasks=4
-#SBATCH --gres=gpu:rtxa5000:1
-#SBATCH --qos=default
-#SBATCH --account=nexus
-#SBATCH --partition=tron
+#SBATCH --gres=gpu:rtxa4000:1
+#SBATCH --qos=scavenger
+#SBATCH --account=scavenger
+#SBATCH --partition=scavenger
 #SBATCH --mem=32G
-#SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/finish5x5_dataset3_%j.txt
-#SBATCH --error=../trial_run_outputs/finish5x5_dataset3_%j.txt
+#SBATCH --time=1:00:00
+#SBATCH --output=../trial_run_outputs/git_test1x1_dataset3_%j.txt
+#SBATCH --error=../trial_run_outputs/git_test1x1_dataset3_%j.txt
 #SBATCH --mail-user=wlamousi@terpmail.umd.edu
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
@@ -34,11 +34,11 @@ export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/troke
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
 
 # Path to pre-computed Trokens point tracking data and few shot info from huggingface.
-export TROKENS_PT_DATA=/fs/vulcan-projects/fsh_track/will/ptattempts/att8/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/
+export TROKENS_PT_DATA=/fs/vulcan-projects/fsh_track/processed_data/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/
 
 # Base output directory for experiments
 
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/dataset3/N5K5dataset3
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/scratch/git_test
 
 export TRAIN.ENABLE=True
 export TEST.ENABLE=True
@@ -52,12 +52,12 @@ export NUM_GPUS=1
 export NUM_WORKERS=4
 # export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
 export MASTER_PORT=29501
-export N_WAY=5 # changed from 5
-export K_SHOT=5
+export N_WAY=1 # changed from 5
+export K_SHOT=1
 export NUM_POINTS_TO_SAMPLE=256
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
 #set wandb id to random 8 character string
-export WANDB_ID="finish5x5_$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)"
+export WANDB_ID="git_test1x1$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)"
 
 export DATASET=$CONFIG_TO_USE
 
@@ -67,8 +67,10 @@ export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/will/dataset3/N5K5dataset3/
 
 mkdir -p $OUTPUT_DIR
 
+cd ..
+
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
-	../tools/run_net.py --init_method env:// --new_dist_init \
+	tools/run_net.py --init_method env:// --new_dist_init \
 	--cfg configs/trokens/$CONFIG_TO_USE.yaml \
 	WANDB.ID $WANDB_ID \
 	WANDB.EXP_NAME $EXP_NAME \
@@ -93,5 +95,6 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TEST.ENABLE True \
     TRAIN.CHECKPOINT_EPOCH_RESET False \
     TRAIN.AUTO_RESUME True \
-    TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+    SOLVER.MAX_EPOCH 1 \
+    #TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 	
