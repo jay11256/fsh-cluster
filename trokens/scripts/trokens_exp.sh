@@ -61,7 +61,7 @@ export TRAIN_ENABLE=True
 export TEST_ENABLE=True
 export NUM_GPUS=1
 export NUM_WORKERS=4
-export MASTER_PORT=29501
+export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
 export NUM_POINTS_TO_SAMPLE=256
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
 #set wandb id to random 8 character string
