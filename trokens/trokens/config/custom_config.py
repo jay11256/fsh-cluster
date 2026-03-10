@@ -33,7 +33,7 @@ def add_custom_config(cfg):
 
     # point info config
     cfg.POINT_INFO = CfgNode()
-    cfg.POINT_INFO.ENABLE = False # CHANGED
+    cfg.POINT_INFO.ENABLE = True
     cfg.POINT_INFO.GRID_SIZE = 16
     cfg.POINT_INFO.NAME = ''
     cfg.POINT_INFO.NUM_POINTS_TO_SAMPLE = 256
