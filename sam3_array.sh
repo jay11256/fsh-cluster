@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sam3pkl1_array
+#SBATCH --job-name=sam3pkl3
 #SBATCH --gres=gpu:rtxa4000:1
 #SBATCH --qos=scavenger
 #SBATCH --account=scavenger
@@ -9,8 +9,8 @@
 #SBATCH --time=2:00:00
 #SBATCH --array=0-99
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
-#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2_%A_%a.txt
-#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl2%_%A_%a.txt
+#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl3_%A_%a.txt
+#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pkl3%_%A_%a.txt
 
 # --mail-user=jliu1230@terpmail.umd.edu
 
@@ -23,7 +23,7 @@ conda activate sam3
 
 VIDEO_DIR=../../processed_data/dataset3
 SCRIPT=./run_sam3.py 
-OUT_DIR=../../processed_data/sam3pkl2
+OUT_DIR=../../processed_data/sam3pkl3
 # ------------------------
 
 # Total number of splits = number of array jobs

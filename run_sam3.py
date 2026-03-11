@@ -337,7 +337,9 @@ tracks = torch.from_numpy(arr)
 
 # region Visibility (pred_visibility) — (frames, objects*9), one flag per point
 # A point is visible if its coords are not -1 (i.e. the mask was present that frame)
-vis_arr = (arr[:, :, 0] != -1)  # (frames, objects*9)
+
+#test for all vis true
+vis_arr = (arr[:, :, 0] != -10) # (arr[:, :, 0] != -1)  # (frames, objects*9)
 visibility = torch.from_numpy(vis_arr)
 # endregion
 
