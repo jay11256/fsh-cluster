@@ -11,17 +11,23 @@
 #SBATCH --error=../trial_run_outputs/trokens_exp1_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
+''' USAGE 
+run this file from the scripts folder 
+sbatch trokens_exp.sh <N_WAY> <K_SHOT> <PT_DATA> <MODE>
+'''
 
 #command line arguments
-if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
-    echo "Error: Missing required parameters. Usage: $0 <N_WAY> <K_SHOT> <PT_DATA>"
-    echo "PT_DATA options: 'none', 'trokens', 'sam3'"
-    exit 1
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+	echo "Error: Missing required parameters. Usage: $0 <N_WAY> <K_SHOT> <PT_DATA> <MODE>"
+	echo "PT_DATA options: 'none', 'trokens', 'sam3'"
+	echo "MODE options: 'train', 'test', 'both'"
+	exit 1
 fi
 
 N_WAY=$1
 K_SHOT=$2
 PT_DATA=$3
+MODE=$4
 if [[ "$PT_DATA" != "none" && "$PT_DATA" != "trokens" && "$PT_DATA" != "sam3" ]]; then
     echo "Error: Invalid PT_DATA option. Must be 'none', 'trokens', or 'sam3'"
     exit 1
@@ -51,26 +57,42 @@ conda activate trokens
 export CONFIG_TO_USE=fshdata
 export DATASET=$CONFIG_TO_USE
 export EXP_NAME=trokens_exp1
-export SECONDAY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}"
+export SECONDAY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$CONFIG_TO_USE/$EXP_NAME/$SECONDAY_EXP_NAME
 
-export TRAIN_ENABLE=True
-export TEST_ENABLE=True
+case $MODE in
+	"train")
+		TRAIN_ENABLE=True
+		TEST_ENABLE=False
+		;;
+	"test")
+		TRAIN_ENABLE=False
+		TEST_ENABLE=True
+		;;
+	"both")
+		TRAIN_ENABLE=True
+		TEST_ENABLE=True
+		;;
+	*)
+		echo "Error: Invalid MODE option. Must be 'train', 'test', or 'both'"
+		exit 1
+		;;
+esac
 export NUM_GPUS=1
 export NUM_WORKERS=4
 export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
 export NUM_POINTS_TO_SAMPLE=256
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
 #set wandb id to random 8 character string
-export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}_$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)"
+export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
 
 
-# export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/will/dataset3/N5K5dataset3/fshdata/trokens_release/sample_exp/checkpoints/checkpoint_epoch_00037.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/trokens_exp1/5_way-5_shot-trokens/checkpoints/checkpoint_epoch_00050.pyth
 
 mkdir -p $OUTPUT_DIR
 
@@ -103,5 +125,5 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TEST.ENABLE $TEST_ENABLE \
     TRAIN.CHECKPOINT_EPOCH_RESET False \
     TRAIN.AUTO_RESUME True \
-    #TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+#    TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 	
