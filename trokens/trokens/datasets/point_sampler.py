@@ -31,6 +31,7 @@ def cluster_sample(pt_dict, points_to_sample, cluster_with_vis=False):
         point_indices (np.ndarray): Point indices
         obj_ids (np.ndarray): Object IDs
     """
+
     # Get unique clusters and their counts
     obj_ids = pt_dict['obj_ids']  # shape: (p,)
     assert obj_ids.shape[0] == pt_dict['pred_tracks'].shape[1]
@@ -54,6 +55,13 @@ def cluster_sample(pt_dict, points_to_sample, cluster_with_vis=False):
     min_points_per_cluster = 1
     remaining_points = points_to_sample - (min_points_per_cluster * num_clusters)
 
+    # ts never runs
+    # print("\nvariables and stuff")
+    # print(f"remaining: {remaining_points}") # usually 255/254
+    # print(f"points: {points_to_sample}") # always 256
+    # print(f"clusters: {num_clusters}\n") # usually 1/2
+
+    # ts never runs either
     if remaining_points < 0:
         # If we need to sample fewer points than clusters, randomly select N clusters
         # Weight the selection by cluster sizes to maintain some proportionality
@@ -77,10 +85,32 @@ def cluster_sample(pt_dict, points_to_sample, cluster_with_vis=False):
         points_sum = sum(points_per_cluster)
         extra_needed = points_to_sample - points_sum
 
+        print("\nExtra Needed?")
+        print(f"points to sample: {points_to_sample}")
+        print(f"points sum: {points_sum}")
+        print(f"extraneeded: {extra_needed}\n")
+
         if extra_needed > 0:
             # Randomly distribute remaining points, weighted by cluster sizes
             # to maintain approximate proportionality
             weights = cluster_counts.float() / total_points
+
+            #region Failsafe for SAM3 errors
+            # if weights.sum() <= 0 or torch.isnan(weights).any():
+            #     print(f"weights: {weights}")
+            #     print(f"weights sum: {weights.sum()}")
+            #     print(f"has nan: {torch.isnan(weights).any()}")
+            #     print(f"has neg: {(weights < 0).any()}")
+            #     weights = torch.ones_like(weights) # Fallback: uniform sampling
+            #endregion
+            print()
+            print("Before Crash")
+            print(f"weights: {weights}")
+            print(f"weights sum: {weights.sum()}")
+            print(f"has nan: {torch.isnan(weights).any()}")
+            print(f"has neg: {(weights < 0).any()}")
+            print()
+
             selected_clusters = torch.multinomial(
                     weights,
                     num_samples=extra_needed,
