@@ -311,25 +311,25 @@ def point_sampler(cfg, pt_dict, pred_tracks, pred_visibility,
         filtered_points[indices_of_points_to_sample] = True
         return filtered_points, point_order
 
-    if (split=='train' and cfg.POINT_INFO.PT_FIX_SAMPLING_TRAIN) or \
-        (split=='test' and cfg.POINT_INFO.PT_FIX_SAMPLING_TEST):
-        fix_sample_stratergy = sampling_type
-        fix_sample_num_points = points_to_sample
-        try:
-            sampled_dict = pt_dict[fix_sample_stratergy][fix_sample_num_points]
-            sampled_indices = sampled_dict['sampled_indices']
-            ids_to_consider = sampled_dict['ids_to_consider']
-        except:
+    # if (split=='train' and cfg.POINT_INFO.PT_FIX_SAMPLING_TRAIN) or \
+    #     (split=='test' and cfg.POINT_INFO.PT_FIX_SAMPLING_TEST):
+    #     fix_sample_stratergy = sampling_type
+    #     fix_sample_num_points = points_to_sample
+    #     try:
+    #         sampled_dict = pt_dict[fix_sample_stratergy][fix_sample_num_points]
+    #         sampled_indices = sampled_dict['sampled_indices']
+    #         ids_to_consider = sampled_dict['ids_to_consider']
+    #     except:
 
-            new_indices = fix_fixed_point_sampling(index_seed, num_points, fix_sample_num_points)
-            sampled_indices = new_indices
-            ids_to_consider = None
+    #         new_indices = fix_fixed_point_sampling(index_seed, num_points, fix_sample_num_points)
+    #         sampled_indices = new_indices
+    #         ids_to_consider = None
 
-        if ids_to_consider is None:
-            ids_to_consider = np.arange(num_points).astype(int)
-        filtered_points[sampled_indices] = True
+    #     if ids_to_consider is None:
+    #         ids_to_consider = np.arange(num_points).astype(int)
+    #     filtered_points[sampled_indices] = True
 
-        return filtered_points, ids_to_consider
+    #     return filtered_points, ids_to_consider
 
 
     if index_select is not None:
@@ -337,16 +337,27 @@ def point_sampler(cfg, pt_dict, pred_tracks, pred_visibility,
         pred_visibility = pred_visibility[index_select]
 
     if sampling_type == 'random':
+        # print("Sampling type random.")
         sampled_points = np.random.choice(num_points, points_to_sample, replace=False)
         filtered_points[sampled_points] = True
     elif sampling_type == 'stratified':
-
         pred_tracks_normalised = pred_tracks / pred_tracks.max()
         all_points_distance = get_distance_of_all_points(pred_tracks_normalised, pred_visibility)
         sampled_points = stratified_sampling(all_points_distance, points_to_sample)
         filtered_points[sampled_points] = True
         distances_sampled = all_points_distance[filtered_points]
         point_order = np.argsort(distances_sampled)
+    elif sampling_type == 'fsh':
+        # print("Sampling type fsh.")
+        if num_points == 0:
+            print(f"WARNING: num_points is 0 for this sample, pt_dict keys: {pt_dict.keys()}")
+            return filtered_points, point_order
+        if num_points >= points_to_sample:
+            indices = np.random.choice(num_points, points_to_sample, replace=False)
+        else:
+            indices = np.random.choice(num_points, points_to_sample, replace=True)
+        filtered_points[indices] = True
+        return filtered_points, point_order
     else:
         raise NotImplementedError(f"Sampling type {sampling_type} not implemented")
     return filtered_points, point_order

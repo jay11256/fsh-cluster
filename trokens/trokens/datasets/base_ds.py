@@ -199,12 +199,15 @@ class BaseDataset(torch.utils.data.Dataset):
 
 
         num_points = pred_tracks.shape[1]
+        # In base_ds.py, around line 205
+        if num_points == 0:
+            print(f"WARNING: num_points is 0 for feat_path: {feat_path}")
         if ((num_points > self.cfg.POINT_INFO.NUM_POINTS_TO_SAMPLE) or
             (self.cfg.POINT_INFO.PT_FIX_SAMPLING_TRAIN) or
             (self.cfg.POINT_INFO.PT_FIX_SAMPLING_TEST)):
 
             assert self.cfg.POINT_INFO.SAMPLING_TYPE != 'None'
-
+            
             filtered_points, _ = point_sampler(self.cfg, pt_dict, pred_tracks.clone(),
                         pred_visibility.clone(),
                         points_to_sample=self.cfg.POINT_INFO.NUM_POINTS_TO_SAMPLE,
@@ -212,7 +215,7 @@ class BaseDataset(torch.utils.data.Dataset):
                         index_select=index_select,
                         split=self.mode,
                         index_seed=index)
-
+            
             pred_tracks_to_take = pred_tracks[:, filtered_points]
             pred_visibility_to_take = pred_visibility[:, filtered_points]
             per_point_queries_to_take = per_point_queries[filtered_points]

@@ -11,10 +11,10 @@
 #SBATCH --error=../trial_run_outputs/trokens_exp1_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
-''' USAGE 
-run this file from the scripts folder 
-sbatch trokens_exp.sh <N_WAY> <K_SHOT> <PT_DATA> <MODE>
-'''
+# ''' USAGE 
+# run this file from the scripts folder 
+# sbatch trokens_exp.sh <N_WAY> <K_SHOT> <PT_DATA> <MODE>
+# '''
 
 #command line arguments
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
@@ -36,14 +36,17 @@ case $PT_DATA in
     "none")
 		POINT_INFO_ENABLE=False 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pkl2/"
+		export NUM_POINTS_TO_SAMPLE=18
         ;;
 esac
 
@@ -55,7 +58,7 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export DATASET=$CONFIG_TO_USE
+export  a=$CONFIG_TO_USE
 export EXP_NAME=trokens_exp1
 export SECONDAY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
@@ -84,7 +87,6 @@ esac
 export NUM_GPUS=1
 export NUM_WORKERS=4
 export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
-export NUM_POINTS_TO_SAMPLE=256
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
 #set wandb id to random 8 character string
 export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
@@ -115,7 +117,6 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
 	FEW_SHOT.N_WAY $N_WAY \
 	POINT_INFO.ENABLE $POINT_INFO_ENABLE \
 	POINT_INFO.NAME $POINT_INFO_NAME \
-	POINT_INFO.SAMPLING_TYPE cluster_sample \
 	POINT_INFO.NUM_POINTS_TO_SAMPLE $NUM_POINTS_TO_SAMPLE \
 	MODEL.FEAT_EXTRACTOR dino \
 	MODEL.DINO_CONFIG dinov2_vitb14 \
