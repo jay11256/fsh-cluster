@@ -1,26 +1,3 @@
-bsri
-bsri
-Do Not Disturb
-
-bsri — 1/16/26, 5:12 PM
-read his lips
-bsri — 1/16/26, 8:59 PM
-Image
-which position would you rather have
-will L — 1/16/26, 9:45 PM
-black
-bsri — 1/18/26, 12:24 AM
-why
-will L — 1/18/26, 2:47 PM
-suck my dick
-whoops
-bsri — 1/18/26, 9:47 PM
-ok
-bsri — 1:39 AM
-git add trokens/
-git commit -m "better testing"
-git push
-will L — 1:43 AM
 #!/usr/bin/env python3
 
 """Test a few shot classification model."""
