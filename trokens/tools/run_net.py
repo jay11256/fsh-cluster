@@ -7,7 +7,7 @@ import sys
 sys.path = [x for x  in sys.path if not (os.path.isdir(x) and 'trokens' in os.listdir(x))]
 sys.path.append(os.getcwd())
 from train_few_shot import train_few_shot
-from test_few_shot_original import test_few_shot
+from test_few_shot import test_few_shot
 from dist_utils import init_distributed_mode
 import trokens
 assert trokens.__file__.startswith(os.getcwd()), (f"sys.path: {sys.path}, "

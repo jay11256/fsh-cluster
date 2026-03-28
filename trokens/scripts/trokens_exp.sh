@@ -14,6 +14,7 @@
 # ''' USAGE 
 # run this file from the scripts folder 
 # sbatch trokens_exp.sh <N_WAY> <K_SHOT> <PT_DATA> <MODE>
+# If you are just testing, set the checkpoint file and uncomment the last line in script
 # '''
 
 #command line arguments
@@ -60,11 +61,11 @@ conda activate trokens
 export CONFIG_TO_USE=fshdata
 export  a=$CONFIG_TO_USE
 export EXP_NAME=trokens_exp1
-export SECONDAY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
+export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset4
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
-export OUTPUT_DIR=$BASE_OUTPUT_DIR/$CONFIG_TO_USE/$EXP_NAME/$SECONDAY_EXP_NAME
+export OUTPUT_DIR=$BASE_OUTPUT_DIR/$CONFIG_TO_USE/$EXP_NAME/$SECONDARY_EXP_NAME
 
 case $MODE in
 	"train")
@@ -104,7 +105,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
 	tools/run_net.py --init_method env:// --new_dist_init \
 	--cfg configs/trokens/$CONFIG_TO_USE.yaml \
 	WANDB.ID $WANDB_ID \
-	WANDB.EXP_NAME $EXP_NAME \
+	WANDB.EXP_NAME $SECONDARY_EXP_NAME \
 	MASTER_PORT $MASTER_PORT \
 	OUTPUT_DIR $OUTPUT_DIR \
 	NUM_GPUS $NUM_GPUS \
