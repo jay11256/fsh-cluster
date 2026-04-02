@@ -173,7 +173,7 @@ line_thickness=1):
 
 
 def vis_trail(video, kpts, kpts_vis, kpts_queries=None,point_to_take=None, fps=10, cluster_ids=None,
-line_thickness=1, max_cluster_id=None):
+line_thickness=3, max_cluster_id=None):
     """
     This function calculates the median motion of the background, which is subsequently
     subtracted from the foreground motion. This subtraction process "stabilizes" the camera and
@@ -269,7 +269,7 @@ line_thickness=1, max_cluster_id=None):
                 color = np.array(color_map(j/max(1, float(num_pts - 1)))[:3]) * 255
             pt1 = kpts[i, j]
             p1 = (int(round(pt1[0])), int(round(pt1[1])))
-            cv2.circle(img_curr, p1, 2, color, -1, lineType=16)
+            cv2.circle(img_curr, p1, 5, color, -1, lineType=16)
             if cluster_ids is not None:
                 text = str(cluster_ids[j])
                 # Position text slightly above the point
