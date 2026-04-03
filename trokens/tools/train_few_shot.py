@@ -398,82 +398,66 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, wandb_run=None):
         wandb_run (wandb.run): wandb run object
     """
 
-    # Evaluation mode enabled. The running stats would not be updated.
+    # CHANGED - commented out lines relating to class_ids and num_test_classes 
     model.eval()
-    val_meter.iter_tic()
-    epoch_top_1_acc_few_shot = []
-    epoch_q2s_loss = []
+    #will code
+    num_test_classes = len(val_loader.dataset.split_df['label_id'].unique())
+    
+    total_top1, total_top3 = 0, 0
+    inputs_processed = 0
 
     for cur_iter, (inputs, labels, _, meta) in enumerate(val_loader):
         if cur_iter > len(val_loader):
             break
         if cfg.NUM_GPUS:
-            # Transfer the data to the current GPU device.
+            # Transferthe data to the current GPU device.
             inputs, labels, meta = misc.iter_to_cuda([inputs, labels, meta])
 
-        val_meter.data_toc()
         input_dict = {'video':inputs, 'metadata':meta}
-        preds, patch_tokens = model(input_dict)
 
-        patch_support_query_dict = support_query_split(patch_tokens, labels, meta)
-        patch_q2s_logits = process_patch_tokens(
-                                    cfg,
-                                    patch_support_query_dict['support_preds'],
-                                    patch_support_query_dict['query_preds'])
-        q2s_labels = patch_support_query_dict['query_batch_labels']
-        q2s_loss = F.cross_entropy(patch_q2s_logits, q2s_labels)
+        #inputs_processed += inputs.size(0)
 
-        if isinstance(preds, tuple):
-            preds, _ = preds
-
-
-        few_shotk_correct = metrics.topks_correct(patch_q2s_logits,
-                                                    q2s_labels, (1, 2))
-        few_shot_top1_acc, _ = [
-            (x / patch_q2s_logits.size(0)) * 100.0 for x in few_shotk_correct
+        preds, _ = model(input_dict) #get predictions
+        
+        few_shotk_correct = metrics.topks_correct(preds,
+                                                    labels, (1, 3))
+        
+        fsh_acc_top1, fsh_acc_top3 = [
+            (x / preds.size(0)) * 100.0 for x in few_shotk_correct
         ]
 
 
+        iter_dict = {'iteration': cur_iter,
+                'eval_iter_acc1': fsh_acc_top1.item(),
+                'eval_iter_acc3': fsh_acc_top3.item(),
+            }
+        if wandb_run:
+            wandb_run.log(iter_dict)
+
+        total_top1 += fsh_acc_top1.item() * inputs.size(0)  
+        total_top3 += fsh_acc_top3.item() * inputs.size(0)
+
         if cfg.NUM_GPUS > 1:
-            few_shot_top1_acc, q2s_loss = du.all_reduce([few_shot_top1_acc, q2s_loss])
+            preds, labels = du.all_gather([preds, labels])
+        
+        continue
 
-            q2s_loss = du.all_reduce([q2s_loss])[0]
-
-        # Copy the errors from GPU to CPU (sync point).
-        few_shot_top1_acc = few_shot_top1_acc.item()
-        q2s_loss = q2s_loss.item()
-        epoch_q2s_loss.append(q2s_loss)
-        epoch_top_1_acc_few_shot.append(few_shot_top1_acc)
-
-        val_meter.iter_toc()
-        # Update and log stats.
-        val_meter.update_stats(
-            q2s_loss,
-            few_shot_top1_acc,
-            inputs[0].size(0)
-            * max(
-                cfg.NUM_GPUS, 1
-            ),  # If running  on CPU (cfg.NUM_GPUS == 1), use 1 to represent 1 CPU.
-        )
-        # write to tensorboard format if available.
-
-
-        val_meter.update_predictions(preds, labels)
-        val_meter.log_iter_stats(cur_epoch, cur_iter)
-        val_meter.iter_tic()
+        #end of fsh accuracy stuff
 
     # Log epoch stats.
-    val_meter.log_epoch_stats(cur_epoch)
-
+    # val_meter.log_epoch_stats(cur_epoch)
+    total_top1 = total_top1 / inputs_processed
+    total_top3 = total_top3 / inputs_processed
     log_dict = {
-        'val_q2s_loss': np.mean(epoch_q2s_loss),
-        'val_top1_acc_few_shot': np.mean(epoch_top_1_acc_few_shot),
+        'eval_total_acc1': total_top1,
+        'eval_total_acc3': total_top3,
         'epoch': cur_epoch}
+    
     if wandb_run:
         wandb_run.log(log_dict)
-    epoch_mean_acc = np.mean(epoch_top_1_acc_few_shot)
-    val_meter.reset()
-    return epoch_mean_acc
+
+    # val_meter.reset()
+    return total_top1
 
 
 
@@ -514,6 +498,10 @@ def train_few_shot(cfg, args, wandb_run=None):
         wandb_run.define_metric("val_loss", summary="min")
         wandb_run.define_metric("val_top5_acc", summary="max")
         wandb_run.define_metric("val_top1_acc", summary="max")
+        wandb_run.define_metric("eval_total_acc1", summary="max")
+        wandb_run.define_metric("eval_total_acc3", summary="max")
+        wandb_run.define_metric("eval_total_acc1", summary="max")
+        wandb_run.define_metric("eval_total_acc3", summary="max")
     else:
         wandb_run = None
 

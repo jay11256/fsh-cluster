@@ -157,10 +157,7 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     """
 
     # Evaluation mode enabled. The running stats would not be updated.
-    # CHANGED - commented out lines relating to class_ids and num_test_classes 
     model.eval()
-    epoch_top_1_acc_few_shot = []
-    epoch_q2s_loss = []
     #will code
     num_test_classes = len(val_loader.dataset.split_df['label_id'].unique())
     confusion_matrix = np.zeros((num_test_classes, num_test_classes))
@@ -179,8 +176,6 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
 
         input_dict = {'video':inputs, 'metadata':meta}
 
-        print('fshdata accuracy metrics')
-        print('input number:', inputs.size(0))
         inputs_processed += inputs.size(0)
 
         preds, _ = model(input_dict) #get predictions
@@ -200,9 +195,6 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
 
         total_top1 += fsh_acc_top1.item() * inputs.size(0)  
         total_top3 += fsh_acc_top3.item() * inputs.size(0)
-        print(f"Iter {cur_iter}, FSH Accuracy Top 1: {fsh_acc_top1.item()}%, Top 3: {fsh_acc_top3.item()}%")
-        
-        #confusion_matrix[labels, preds.argmax(dim=1)] += 1
 
         if cfg.NUM_GPUS > 1:
             preds, labels = du.all_gather([preds, labels])
@@ -212,15 +204,9 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
 
         np.add.at(confusion_matrix, (labels, preds.argmax(axis=1)), 1)
 
-        print(confusion_matrix)
-
-        if np.sum(confusion_matrix) < 64:
-            print("NOT WORKING")
-
         batch_df = pd.DataFrame({'y_true':labels, 'y_preds':preds.argmax(axis=1)})
         all_df.append(batch_df)
         
-
         continue
 
         #end of fsh accuracy stuff
@@ -229,16 +215,13 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     # val_meter.log_epoch_stats(cur_epoch)
     total_top1 = total_top1 / inputs_processed
     total_top3 = total_top3 / inputs_processed
-    print(f"Epoch {cur_epoch}, Total inputs: {inputs_processed}, Overall FSH Accuracy Top 1: {total_top1}%, Top 3: {total_top3}%")
-    print(f'correct totals: {val_loader.dataset.split_df["label_id"].value_counts().to_dict()}')
     log_dict = {
         'test_acc1': total_top1,
         'test_acc3': total_top3,
-        'test_q2s_loss': np.mean(epoch_q2s_loss),
-        'test_top1_acc_few_shot': np.mean(epoch_top_1_acc_few_shot),
         'epoch': cur_epoch}
     if cfg['wandb']:
         cfg['wandb'].log(log_dict)
+
     all_df = pd.concat(all_df)
     all_df.to_csv(os.path.join(cfg.OUTPUT_DIR,cfg['csv_dump_name']))
 
@@ -248,7 +231,6 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
         columns=[f'pred_{i}' for i in range(num_test_classes)]
     )
     conf.to_csv(os.path.join(cfg.OUTPUT_DIR,'confusion_matrix.csv'))
-
     # val_meter.reset()
 
 # pylint: disable=redefined-outer-name

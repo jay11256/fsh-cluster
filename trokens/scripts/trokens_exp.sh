@@ -64,7 +64,7 @@ export EXP_NAME=trokens_exp1
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset4
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/modelruns/truncated
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$CONFIG_TO_USE/$EXP_NAME/$SECONDARY_EXP_NAME
 
 case $MODE in
@@ -95,7 +95,7 @@ export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev
 
 
 
-#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/trokens_exp1/5_way-5_shot-trokens/checkpoints/checkpoint_epoch_00050.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/trokens_exp1/5_way-3_shot-trokens-both/checkpoints/checkpoint_best.pyth
 
 mkdir -p $OUTPUT_DIR
 

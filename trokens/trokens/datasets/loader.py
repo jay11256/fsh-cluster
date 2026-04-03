@@ -123,7 +123,7 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
     dataset = build_dataset(dataset_name, cfg, split)
 
     #Start will code
-    if dataset_name != 'Fshdata' and split in ['test'] and False:
+    if dataset_name == 'Fshdata' and split in ['test']:
         print('default sampler!')
         loader = torch.utils.data.DataLoader(
             dataset,
