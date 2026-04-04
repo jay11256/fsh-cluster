@@ -415,7 +415,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, wandb_run=None):
 
         input_dict = {'video':inputs, 'metadata':meta}
 
-        #inputs_processed += inputs.size(0)
+        inputs_processed += inputs.size(0)
 
         preds, _ = model(input_dict) #get predictions
         
