@@ -498,10 +498,8 @@ def train_few_shot(cfg, args, wandb_run=None):
         wandb_run.define_metric("val_loss", summary="min")
         wandb_run.define_metric("val_top5_acc", summary="max")
         wandb_run.define_metric("val_top1_acc", summary="max")
-        wandb_run.define_metric("eval_total_acc1", summary="max")
-        wandb_run.define_metric("eval_total_acc3", summary="max")
-        wandb_run.define_metric("eval_total_acc1", summary="max")
-        wandb_run.define_metric("eval_total_acc3", summary="max")
+        wandb_run.define_metric("eval_total_acc1", step_metric="epoch", summary="max")
+        wandb_run.define_metric("eval_total_acc3", step_metric="epoch", summary="max")
     else:
         wandb_run = None
 
