@@ -38,7 +38,8 @@ class Fshdata(BaseDataset):
         self.data_root = self.cfg.DATA.PATH_TO_DATA_DIR
         
         # Read CSV file
-        csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset5/dataset5.csv"
+        csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset3/dataset3.csv"
+
         if not os.path.exists(csv_path):
             raise FileNotFoundError(f"CSV file not found at {csv_path}")
         

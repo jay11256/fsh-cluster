@@ -95,7 +95,7 @@ export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev
 
 
 
-#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/trokens_exp1/5_way-3_shot-trokens-both/checkpoints/checkpoint_best.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/truncated1/fshdata/trokens_exp1/5_way-1_shot-trokens-train/checkpoints/checkpoint_best.pyth
 #export TRAIN_EVAL_PERIOD=1
 
 mkdir -p $OUTPUT_DIR
@@ -128,6 +128,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TEST.ENABLE $TEST_ENABLE \
     TRAIN.CHECKPOINT_EPOCH_RESET False \
     TRAIN.AUTO_RESUME True \
+#	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 #    TRAIN.EVAL_PERIOD $TRAIN_EVAL_PERIOD
-#    TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+
 	
