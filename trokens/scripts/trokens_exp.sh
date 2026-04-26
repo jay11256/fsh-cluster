@@ -93,8 +93,6 @@ export POINT_INFO_NAME="cotracker3_bip_fr_32"
 export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
-
-
 #export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
 #export TRAIN_EVAL_PERIOD=1
 

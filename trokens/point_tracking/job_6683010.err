@@ -1,0 +1,9 @@
+Warning: '/fs/vulcan-projects/fsh_track/envs/trokens_env' already in 'envs_dirs' list, moving to the top
+Using cache found in /nfshomes/wlamousi/.cache/torch/hub/facebookresearch_co-tracker_main
+Using cache found in /nfshomes/wlamousi/.cache/torch/hub/facebookresearch_dinov2_main
+/nfshomes/wlamousi/.cache/torch/hub/facebookresearch_dinov2_main/dinov2/layers/swiglu_ffn.py:51: UserWarning: xFormers is not available (SwiGLU)
+  warnings.warn("xFormers is not available (SwiGLU)")
+/nfshomes/wlamousi/.cache/torch/hub/facebookresearch_dinov2_main/dinov2/layers/attention.py:33: UserWarning: xFormers is not available (Attention)
+  warnings.warn("xFormers is not available (Attention)")
+/nfshomes/wlamousi/.cache/torch/hub/facebookresearch_dinov2_main/dinov2/layers/block.py:40: UserWarning: xFormers is not available (Block)
+  warnings.warn("xFormers is not available (Block)")

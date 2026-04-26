@@ -15,4 +15,4 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/trokens_env
 conda activate trokens
 conda init
 
-python new_point_tracking.py --fps 10 --csv_path /fs/vulcan-projects/fsh_track/processed_data/dataset2/formatted_summary.csv --base_feat_path /fs/vulcan-projects/fsh_track/will/ptattempts/att8
+python new_point_tracking.py --fps 10 --csv_path /fs/vulcan-projects/fsh_track/processed_data/dataset7/dataset7.csv --base_feat_path /fs/vulcan-projects/fsh_track/processed_data/sevensecscotrac

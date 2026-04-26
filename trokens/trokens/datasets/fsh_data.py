@@ -2,6 +2,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 """FSH dataset."""
 import os
+import glob
 import pandas as pd
 import numpy as np
 
@@ -15,7 +16,12 @@ from .base_ds import BaseDataset
 logger = logging.get_logger(__name__)
 
 # When True, remove behaviors that have fewer than 15 occurrences in total
-CUT_SMALLS = True
+CUT_SMALLS = False
+# When True, only keep rows whose "name" matches the provided list.
+# This will prefer matching against `behavior` names (common use),
+# but will fall back to matching `video_name` / `vid_id` if no overlap exists.
+FILTER_ONE = True
+FILTER_ONE_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee"]
 
 
 @DATASET_REGISTRY.register()
@@ -38,7 +44,13 @@ class Fshdata(BaseDataset):
         self.data_root = self.cfg.DATA.PATH_TO_DATA_DIR
         
         # Read CSV file
-        csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset6/dataset6.csv"
+        #csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset6/dataset6.csv"
+        csv_files = glob.glob(os.path.join(self.data_root, "*.csv"))
+
+        if len(csv_files) != 1:
+            raise FileNotFoundError(f"Expected exactly one CSV in {self.data_root}, found {len(csv_files)}")
+
+        csv_path = csv_files[0]
 
         if not os.path.exists(csv_path):
             raise FileNotFoundError(f"CSV file not found at {csv_path}")
@@ -89,6 +101,17 @@ class Fshdata(BaseDataset):
         self.dataset_df['video_name'] = self.dataset_df['video_path'].apply(
             lambda x: os.path.splitext(os.path.basename(x))[0])
         
+        # Optionally filter to only the requested example/behavior names.
+        if FILTER_ONE:
+            requested = set([str(x).strip() for x in FILTER_ONE_BEHAVIORS if str(x).strip() != ""])
+            if len(requested) > 0:
+                before = len(self.dataset_df)
+                self.dataset_df = self.dataset_df[self.dataset_df['behavior'].isin(requested)].reset_index(drop=True)
+                after = len(self.dataset_df)
+                logger.info(f"FILTER_ONE enabled: kept {after}/{before} rows by behavior filter.")
+            else:
+                logger.warning("FILTER_ONE enabled but FILTER_ONE_BEHAVIORS is empty; no filtering applied.")
+
         # Create feat_base_name
         self.dataset_df['feat_base_name'] = self.dataset_df['video_name'].apply(
             lambda x: x + '.pkl')
