@@ -399,7 +399,16 @@ if CREATE_OUTPUT_VID:
         (128, 128, 0), (128, 0, 128), (0, 128, 128),
         (255, 128, 0),
     ]
-    alpha = 0.4
+#     object_colors = [
+#     # (255, 220, 200),  # pastel blue (BGR)
+#     # # (255, 200, 230),  # pastel purple (BGR)
+#     # (200,220,255),
+#     # (230,200,255),
+#     # (0,0,0),
+#     (193, 182, 255),  # pastel pink (BGR)
+#     (230, 216, 173),  # pastel blue (BGR)
+# ]
+    alpha = .95
     obj_color_map = {}
     frame_idx = 0
     with tqdm(total=frame_count, desc=f"Rendering {video_name}") as pbar:
@@ -456,6 +465,15 @@ if CREATE_OUTPUT_VID:
                         color_layer, alpha,
                         0
                     )
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    outline_color = tuple(int(c * 0.5) for c in color)
+                    # cv2.drawContours(overlay, contours, -1, outline_color, 2)
+
+                    # Make outline color (darker version)
+                    # outline_color = tuple(int(c * 0.5) for c in color)
+
+                    # # Apply outline
+                    # overlay[mask==1]= color
 
                 frame = overlay
 
@@ -471,8 +489,8 @@ if CREATE_OUTPUT_VID:
                         px, py = int(px), int(py)
                         # Centre point (index 4 in a 3x3 grid) slightly larger
                         radius = 7 if i == 4 else 4
-                        cv2.circle(frame, (px, py), radius, color, -1)
-                        cv2.circle(frame, (px, py), radius + 1, (0, 0, 0), 1)  # thin black outline
+                        # cv2.circle(frame, (px, py), radius, color, -1)
+                        # cv2.circle(frame, (px, py), radius + 1, (0, 0, 0), 1)  # thin black outline
 
             out.write(frame)
             frame_idx += 1
