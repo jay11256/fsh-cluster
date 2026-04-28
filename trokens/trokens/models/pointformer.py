@@ -579,7 +579,7 @@ def get_points_using_correlation(cfg, features):
     extra_indices = torch.arange(max_indices.shape[-1]).to(max_indices.device)
     extra_indices = extra_indices.unsqueeze(0).unsqueeze(0).expand(max_indices.shape[0], -1, -1)
     max_indices = torch.cat([extra_indices, max_indices], dim=1)
-    if cfg.MODEL.DINO_CONFIG=="dinov2_vitb14":
+    if cfg.MODEL.DINO_CONFIG in ["dinov2_vitb14", "dinov2_vits14"]:
         grid_points = create_normalized_grid(image_size=224, grid_size=16)
     else:
         raise NotImplementedError(f'Grid points dim not set for {cfg.MODEL.DINO_CONFIG}')
