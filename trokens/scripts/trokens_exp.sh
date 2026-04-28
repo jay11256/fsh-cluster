@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=trokens_exp1
+#SBATCH --job-name=ds7_trokens
 #SBATCH --ntasks=4
 #SBATCH --gres=gpu:rtxa5000:1
 #SBATCH --qos=default
@@ -7,8 +7,8 @@
 #SBATCH --partition=tron
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/trokens_exp1_%j.out
-#SBATCH --error=../trial_run_outputs/trokens_exp1_%j.out
+#SBATCH --output=../trial_run_outputs/trokens_ds7_%j.out
+#SBATCH --error=../trial_run_outputs/trokens_ds7_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE 
@@ -36,17 +36,17 @@ fi
 case $PT_DATA in
     "none")
 		POINT_INFO_ENABLE=False 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds3/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds7/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds3/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds7/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pkl2/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds7/"
 		export NUM_POINTS_TO_SAMPLE=18
         ;;
 esac
@@ -59,12 +59,11 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export  a=$CONFIG_TO_USE
-export EXP_NAME=trokens_exp2
+export EXP_NAME=ds7
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/scratch
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset7
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 
 case $MODE in
@@ -90,7 +89,7 @@ export NUM_WORKERS=4
 export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
 #set wandb id to random 8 character string
-export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
+export WANDB_ID="${EXP_NAME}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
 export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
