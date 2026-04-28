@@ -510,6 +510,12 @@ _C.DATA_LOADER.PIN_MEMORY = True
 # Enable multi thread decoding.
 _C.DATA_LOADER.ENABLE_MULTI_THREAD_DECODE = False
 
+# Only train on classes with more than 15 examples
+_C.DATA_LOADER.CUT_SMALLS = False
+
+# Use only behaviors found in filter one (see fsh_Data.py)
+_C.DATA_LOADER.FILTER_ONE = False
+
 
 
 

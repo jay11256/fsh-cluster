@@ -42,6 +42,8 @@ class Fshdata(BaseDataset):
                 and sample multiple clips per video.
         """
         self.data_root = self.cfg.DATA.PATH_TO_DATA_DIR
+        CUT_SMALLS = self.cfg.DATA_LOADER.CUT_SMALLS
+        FILTER_ONE = self.cfg.DATA_LOADER.FILTER_ONE
         
         # Read CSV file
         #csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset6/dataset6.csv"
@@ -137,16 +139,17 @@ class Fshdata(BaseDataset):
             lambda x: os.path.join(self.base_feature_path, x))
         
         # Filter out rows where feature files don't exist
-        original_len = len(self.split_df)
-        self.split_df = self.split_df[
-            self.split_df['feat_path'].apply(os.path.exists)].reset_index(drop=True)
-        new_len = len(self.split_df)
-        
-        if new_len == 0:
-            raise ValueError(f"No feature files found for {self.mode} mode. Check feature path: {self.base_feature_path}")
-        
-        if new_len < 0.95 * original_len:
-            logger.warning(f"Some features are missing. Expected {original_len}, found {new_len}")
+        if self.cfg.POINT_INFO.ENABLE:
+            original_len = len(self.split_df)
+            self.split_df = self.split_df[
+                self.split_df['feat_path'].apply(os.path.exists)].reset_index(drop=True)
+            new_len = len(self.split_df)
+            
+            if new_len == 0:
+                raise ValueError(f"No feature files found for {self.mode} mode. Check feature path: {self.base_feature_path}")
+            
+            if new_len < 0.95 * original_len:
+                logger.warning(f"Some features are missing. Expected {original_len}, found {new_len}")
         
         self._make_final_lists()
     

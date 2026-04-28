@@ -36,12 +36,12 @@ fi
 case $PT_DATA in
     "none")
 		POINT_INFO_ENABLE=False 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds3/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds3/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "sam3")
@@ -63,8 +63,8 @@ export  a=$CONFIG_TO_USE
 export EXP_NAME=trokens_exp2
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset6
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/foursecs
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset3
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/scratch
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 
 case $MODE in
@@ -93,7 +93,7 @@ export POINT_INFO_NAME="cotracker3_bip_fr_32"
 export WANDB_ID="exp1_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
-#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
+export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
 #export TRAIN_EVAL_PERIOD=1
 
 mkdir -p $OUTPUT_DIR
@@ -125,8 +125,8 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TRAIN.ENABLE $TRAIN_ENABLE \
     TEST.ENABLE $TEST_ENABLE \
     TRAIN.CHECKPOINT_EPOCH_RESET False \
-    TRAIN.AUTO_RESUME True 
-#	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+    TRAIN.AUTO_RESUME True \
+ 	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 #    TRAIN.EVAL_PERIOD $TRAIN_EVAL_PERIOD
 
 	

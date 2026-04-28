@@ -23,6 +23,8 @@ from trokens.models import build_model
 from fvcore.common.config import CfgNode
 from fvcore.nn.precise_bn import update_bn_stats
 
+import trokens.models.losses as losses
+
 def wandb_init_dict(cfg_node):
     """Convert a config node to dictionary.
     """
@@ -199,8 +201,29 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
         if cfg.NUM_GPUS > 1:
             preds, labels = du.all_gather([preds, labels])
 
+        '''
+        # Explicitly declare reduction to mean.
+        loss_fun = losses.get_loss_func(cfg)(
+            reduction="mean"
+        )
+        '''
+        #classfication_loss = loss_fun(preds, labels)
+        #loss_dict = {'classfication_loss':classfication_loss}
+
+
         preds = preds.cpu().numpy()
         labels = labels.cpu().numpy()
+
+        #print(preds[0])
+        #print(preds[1])
+        #print(preds[2])
+        #print("losses now")
+        #print(classfication_loss)
+
+        print("Unique labels:", np.unique(labels))
+        print("Max label:", labels.max())
+        print("Max pred:", preds.argmax(axis=1).max())
+        print("Confusion matrix size:", confusion_matrix.shape)
 
         np.add.at(confusion_matrix, (labels, preds.argmax(axis=1)), 1)
 

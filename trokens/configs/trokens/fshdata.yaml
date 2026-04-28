@@ -73,10 +73,10 @@ SOLVER:
   TEMPRATURE: 1.0
   WARMUP_START_LR: 1e-06
 MODEL:
-  NUM_CLASSES: 13  #set to 13 by will
+  NUM_CLASSES: 6  #set to 6 by will
   ARCH: slow
   MODEL_NAME: Pointformer
-  LOSS_FUNC: label_smoothing_cross_entropy
+  LOSS_FUNC: bce_logit
   VIT_TYPE: None
   RESNET_TYPE: None
 TEST:
@@ -84,5 +84,7 @@ TEST:
   DATASET: Fshdata
   BATCH_SIZE: 64
 DATA_LOADER:
-  NUM_WORKERS: 4 # changed from 4 for debugging, set back to 4 (not sure if successful yet, ask will)
+  NUM_WORKERS: 4
   PIN_MEMORY: True
+  FILTER_ONE: False
+  CUT_SMALLS: False
