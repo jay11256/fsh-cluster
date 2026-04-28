@@ -122,6 +122,9 @@ class Fshdata(BaseDataset):
         # If CSV has a 'split' or 'new_split' column, use it; otherwise create automatic split
         if 'split' in self.dataset_df.columns:
             self.dataset_df['new_split'] = self.dataset_df['split']
+            # Log behavior distribution in each split
+            split_counts = self.dataset_df.groupby(['behavior', 'new_split']).size().unstack(fill_value=0)
+            logger.info(f"Split distribution by behavior:\n{split_counts}")
         elif 'new_split' in self.dataset_df.columns:
             pass  # Already exists
         else:

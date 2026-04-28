@@ -59,12 +59,15 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds7
+export EXP_NAME=ds7_big6
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset7
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
+export NUM_CLASSES=6
+export CUT_SMALLS=False
+export FILTER_ONE=True
 
 case $MODE in
 	"train")
@@ -92,7 +95,7 @@ export POINT_INFO_NAME="cotracker3_bip_fr_32"
 export WANDB_ID="${EXP_NAME}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
-export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
 #export TRAIN_EVAL_PERIOD=1
 
 mkdir -p $OUTPUT_DIR
@@ -125,7 +128,10 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TEST.ENABLE $TEST_ENABLE \
     TRAIN.CHECKPOINT_EPOCH_RESET False \
     TRAIN.AUTO_RESUME True \
- 	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+	DATA_LOADER.CUT_SMALLS $CUT_SMALLS \
+	DATA_LOADER.FILTER_ONE $FILTER_ONE \
+	MODEL.NUM_CLASSES $NUM_CLASSES
+# 	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 #    TRAIN.EVAL_PERIOD $TRAIN_EVAL_PERIOD
 
 	
