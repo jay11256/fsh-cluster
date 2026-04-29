@@ -60,7 +60,7 @@ conda activate trokens
 
 export CONFIG_TO_USE=fshdata
 export EXP_NAME=ds6
-export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
+export SECONDARY_EXP_NAME="BCEL-${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset6
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
