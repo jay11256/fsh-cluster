@@ -76,7 +76,7 @@ MODEL:
   NUM_CLASSES: 7  #set to 6 by will
   ARCH: slow
   MODEL_NAME: Pointformer
-  LOSS_FUNC: label_smoothing_cross_entropy
+  LOSS_FUNC: bce_logit
   VIT_TYPE: None
   RESNET_TYPE: None
 TEST:

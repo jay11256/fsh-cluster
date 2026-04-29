@@ -250,7 +250,13 @@ def train_epoch(
                 reduction="mean"
             )
 
-            classfication_loss = loss_fun(preds, labels)
+            # In train_epoch, before calculating loss:
+            target_labels = labels
+            if cfg.MODEL.LOSS_FUNC == 'bce_logit' and labels.dim() == 1:
+                target_labels = F.one_hot(labels, num_classes=cfg.MODEL.NUM_CLASSES).float()
+
+
+            classfication_loss = loss_fun(preds, target_labels)
             loss_dict = {'classfication_loss':classfication_loss}
             patch_support_query_dict = support_query_split(patch_tokens, labels, meta)
             patch_q2s_logits = process_patch_tokens(
