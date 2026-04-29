@@ -220,10 +220,10 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
         #print("losses now")
         #print(classfication_loss)
 
-        print("Unique labels:", np.unique(labels))
-        print("Max label:", labels.max())
-        print("Max pred:", preds.argmax(axis=1).max())
-        print("Confusion matrix size:", confusion_matrix.shape)
+        #print("Unique labels:", np.unique(labels))
+        #print("Max label:", labels.max())
+        #print("Max pred:", preds.argmax(axis=1).max())
+        #print("Confusion matrix size:", confusion_matrix.shape)
 
         np.add.at(confusion_matrix, (labels, preds.argmax(axis=1)), 1)
 

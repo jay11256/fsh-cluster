@@ -15,12 +15,10 @@ from .base_ds import BaseDataset
 
 logger = logging.get_logger(__name__)
 
-# When True, remove behaviors that have fewer than 15 occurrences in total
-CUT_SMALLS = False
+
 # When True, only keep rows whose "name" matches the provided list.
 # This will prefer matching against `behavior` names (common use),
 # but will fall back to matching `video_name` / `vid_id` if no overlap exists.
-FILTER_ONE = True
 FILTER_ONE_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee"]
 
 
@@ -94,10 +92,6 @@ class Fshdata(BaseDataset):
                 self.dataset_df = self.dataset_df[~self.dataset_df['behavior'].isin(small_behaviors)].reset_index(drop=True)
             else:
                 logger.info("No behaviors to remove based on CUT_SMALLS threshold.")
-
-        unique_behaviors = sorted(self.dataset_df['behavior'].unique())
-        behavior_to_label = {behavior: idx for idx, behavior in enumerate(unique_behaviors)}
-        self.dataset_df['label_id'] = self.dataset_df['behavior'].map(behavior_to_label).astype(int)
         
         # Create video_name (basename without extension)
         self.dataset_df['video_name'] = self.dataset_df['video_path'].apply(
@@ -113,6 +107,11 @@ class Fshdata(BaseDataset):
                 logger.info(f"FILTER_ONE enabled: kept {after}/{before} rows by behavior filter.")
             else:
                 logger.warning("FILTER_ONE enabled but FILTER_ONE_BEHAVIORS is empty; no filtering applied.")
+
+        # Create id_labels
+        unique_behaviors = sorted(self.dataset_df['behavior'].unique())
+        behavior_to_label = {behavior: idx for idx, behavior in enumerate(unique_behaviors)}
+        self.dataset_df['label_id'] = self.dataset_df['behavior'].map(behavior_to_label).astype(int)
 
         # Create feat_base_name
         self.dataset_df['feat_base_name'] = self.dataset_df['video_name'].apply(
@@ -137,7 +136,7 @@ class Fshdata(BaseDataset):
             self.dataset_df['new_split'] == self.mode].reset_index(drop=True)
         
         # Create feat_path
-        self.base_feature_path =  self.cfg.DATA.PATH_TO_TROKEN_PT_DATA
+        self.base_feature_path = self.cfg.DATA.PATH_TO_TROKEN_PT_DATA
         self.split_df['feat_path'] = self.split_df['feat_base_name'].apply(
             lambda x: os.path.join(self.base_feature_path, x))
         
