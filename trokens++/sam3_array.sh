@@ -21,9 +21,9 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate sam3
 
 
-VIDEO_DIR=../../processed_data/dataset6
+VIDEO_DIR=../../../processed_data/dataset6
 SCRIPT=./run_sam3.py 
-OUT_DIR=../../processed_data/sam3pklds6
+OUT_DIR=../../../processed_data/sam3pklds6
 # ------------------------
 
 # Total number of splits = number of array jobs
