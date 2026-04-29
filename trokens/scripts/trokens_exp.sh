@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=ds7_trokens
+#SBATCH --job-name=ds6_trokens
 #SBATCH --ntasks=4
 #SBATCH --gres=gpu:rtxa5000:1
 #SBATCH --qos=default
@@ -7,8 +7,8 @@
 #SBATCH --partition=tron
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/trokens_ds7_%j.out
-#SBATCH --error=../trial_run_outputs/trokens_ds7_%j.out
+#SBATCH --output=../trial_run_outputs/trokens_ds6_%j.out
+#SBATCH --error=../trial_run_outputs/trokens_ds6_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE 
@@ -36,17 +36,17 @@ fi
 case $PT_DATA in
     "none")
 		POINT_INFO_ENABLE=False 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds7/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds7/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds7/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds6/"
 		export NUM_POINTS_TO_SAMPLE=18
         ;;
 esac
@@ -59,10 +59,10 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds7_big6
+export EXP_NAME=ds6
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset7
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset6
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=6
