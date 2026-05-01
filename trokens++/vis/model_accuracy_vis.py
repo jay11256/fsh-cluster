@@ -16,8 +16,6 @@ import wandb
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ── ✏️  FILL IN YOUR 9 RUN IDs HERE ─────────────────────────────────────────
-#
 #   Format: (n_shot, method) -> "full_wandb_run_id"
 #
 #   n_shot  : 1, 3, or 5
@@ -35,7 +33,7 @@ RUN_IDS = {
     (3, "sam3"):    "ds6_5_way-3_shot-sam3-both_UCYsyAq8",
 
     (5, "none"):    "ds7_5_way-5_shot-none-both_CBxD48Wo",
-    (5, "trokens"): "ds7_big6_5_way-5_shot-trokens-both_QSVXZgwp",   # e.g. ds6_5_way-5_shot-trokens-both_HwJwNnnF
+    (5, "trokens"): "ds7_big6_5_way-5_shot-trokens-both_QSVXZgwp",
     (5, "sam3"):    "ds7_big6_5_way-5_shot-sam3-both_UDLfMCut",
 }
 
