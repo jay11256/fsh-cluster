@@ -1,6 +1,6 @@
 """Prediction matrix visualization"""
 
-def visualize_matrix():
+def visualize_matrix(video_path, ground_truth_path, window_len=8, overlap_len=4):
     """
     Generates a visualization based on the prediction matrix
 
