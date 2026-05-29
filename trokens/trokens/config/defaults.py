@@ -516,6 +516,9 @@ _C.DATA_LOADER.CUT_SMALLS = False
 # Use only behaviors found in filter one (see fsh_Data.py)
 _C.DATA_LOADER.FILTER_ONE = False
 
+# Use only behaviors found in filter two (see fsh_Data.py)
+_C.DATA_LOADER.FILTER_TWO = False
+
 
 
 

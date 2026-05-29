@@ -7,8 +7,8 @@
 #SBATCH --partition=tron
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/trokens_ds6_%j.out
-#SBATCH --error=../trial_run_outputs/trokens_ds6_%j.out
+#SBATCH --output=../trial_run_outputs/trokens_chase_exp_%j.out
+#SBATCH --error=../trial_run_outputs/trokens_chase_exp_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE 
@@ -29,6 +29,7 @@ N_WAY=$1
 K_SHOT=$2
 PT_DATA=$3
 MODE=$4
+
 if [[ "$PT_DATA" != "none" && "$PT_DATA" != "trokens" && "$PT_DATA" != "sam3" ]]; then
     echo "Error: Invalid PT_DATA option. Must be 'none', 'trokens', or 'sam3'"
     exit 1
@@ -36,17 +37,17 @@ fi
 case $PT_DATA in
     "none")
 		POINT_INFO_ENABLE=False 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds7/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds7/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds6/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds7/"
 		export NUM_POINTS_TO_SAMPLE=18
         ;;
 esac
@@ -59,15 +60,15 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds6
+export EXP_NAME=chase_exp
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset6
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/chase_exp
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
-export NUM_CLASSES=6
+export NUM_CLASSES=7
 export CUT_SMALLS=False
-export FILTER_ONE=True
+export FILTER_TWO=True
 
 case $MODE in
 	"train")
@@ -95,7 +96,7 @@ export POINT_INFO_NAME="cotracker3_bip_fr_32"
 export WANDB_ID="${EXP_NAME}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
-#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/fshdata/ds3trained/5_way-5_shot-trokens/checkpoints/checkpoint_best.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-none-both/checkpoints/checkpoint_best.pyth
 #export TRAIN_EVAL_PERIOD=1
 
 mkdir -p $OUTPUT_DIR
@@ -129,9 +130,9 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TRAIN.CHECKPOINT_EPOCH_RESET False \
     TRAIN.AUTO_RESUME True \
 	DATA_LOADER.CUT_SMALLS $CUT_SMALLS \
-	DATA_LOADER.FILTER_ONE $FILTER_ONE \
-	MODEL.NUM_CLASSES $NUM_CLASSES
-# 	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+	DATA_LOADER.FILTER_TWO $FILTER_TWO \
+	MODEL.NUM_CLASSES $NUM_CLASSES 
+#	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 #    TRAIN.EVAL_PERIOD $TRAIN_EVAL_PERIOD
 
 	

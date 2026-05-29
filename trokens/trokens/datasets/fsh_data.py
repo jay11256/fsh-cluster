@@ -20,6 +20,7 @@ logger = logging.get_logger(__name__)
 # This will prefer matching against `behavior` names (common use),
 # but will fall back to matching `video_name` / `vid_id` if no overlap exists.
 FILTER_ONE_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee"]
+FILTER_TWO_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee", "Chase/Charge"]
 
 
 @DATASET_REGISTRY.register()
@@ -42,6 +43,7 @@ class Fshdata(BaseDataset):
         self.data_root = self.cfg.DATA.PATH_TO_DATA_DIR
         CUT_SMALLS = self.cfg.DATA_LOADER.CUT_SMALLS
         FILTER_ONE = self.cfg.DATA_LOADER.FILTER_ONE
+        FILTER_TWO = self.cfg.DATA_LOADER.FILTER_TWO
         
         # Read CSV file
         #csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset6/dataset6.csv"
@@ -99,6 +101,16 @@ class Fshdata(BaseDataset):
         
         # Optionally filter to only the requested example/behavior names.
         if FILTER_ONE:
+            requested = set([str(x).strip() for x in FILTER_ONE_BEHAVIORS if str(x).strip() != ""])
+            if len(requested) > 0:
+                before = len(self.dataset_df)
+                self.dataset_df = self.dataset_df[self.dataset_df['behavior'].isin(requested)].reset_index(drop=True)
+                after = len(self.dataset_df)
+                logger.info(f"FILTER_ONE enabled: kept {after}/{before} rows by behavior filter.")
+            else:
+                logger.warning("FILTER_ONE enabled but FILTER_ONE_BEHAVIORS is empty; no filtering applied.")
+
+        if FILTER_TWO:
             requested = set([str(x).strip() for x in FILTER_ONE_BEHAVIORS if str(x).strip() != ""])
             if len(requested) > 0:
                 before = len(self.dataset_df)

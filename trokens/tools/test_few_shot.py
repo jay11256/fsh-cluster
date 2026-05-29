@@ -93,6 +93,59 @@ def cos_sim(x, y, epsilon=0.01):
     return dists
 
 
+def topks_correct_with_misclassified_video_names(preds, labels, ks, video_names):
+    """
+    Same counts as `topks_correct`, plus the subset of `video_names` for which
+    the **top-1** predicted class does not match `labels`.
+
+    Args:
+        preds, labels, ks: same as `topks_correct`.
+        video_names: one entry per row (same length as batch size), aligned with
+            rows of `preds` / `labels`.
+
+    Returns:
+        topks_correct: list of per-k correct counts (same as `topks_correct`).
+        misclassified_video_names: names for samples wrong at top-1 (empty if none).
+    """
+    assert preds.size(0) == labels.size(0), "Batch dim of predictions and labels must match"
+    n = preds.size(0)
+    if len(video_names) != n:
+        raise ValueError(
+            f"video_names length ({len(video_names)}) must match batch size ({n})"
+        )
+
+    counts = metrics.topks_correct(preds, labels, ks)
+
+    top1_pred = preds.argmax(dim=1)
+    wrong = ~top1_pred.eq(labels)
+    misclassified = [
+        str(video_names[i])
+        for i in range(n)
+        if bool(wrong[i].item())
+    ]
+    #print(f"misclassified list from tpks modified: {misclassified}")
+    return counts, misclassified
+
+def video_names_from_meta(meta):
+    """
+    Extract one string name per batch row from collated `metadata` (as returned
+    in the 4th slot of the dataset / loader).
+
+    Handles collated batches where `meta['video_name']` is a list of strings,
+    a length-1 batch str, or a tensor.
+    """
+    if "video_name" not in meta:
+        raise KeyError("metadata missing key 'video_name'")
+
+    names = meta["video_name"]
+    if isinstance(names, str):
+        return [names]
+    if isinstance(names, (list, tuple)):
+        return [str(x) for x in names]
+    if isinstance(names, torch.Tensor):
+        return [str(x) for x in names.detach().cpu().reshape(-1).tolist()]
+    raise TypeError(f"Unsupported video_name type: {type(names)}")
+
 def support_query_split(preds, labels, metadata):
     """
     Split the preds and labels into support and query.
@@ -164,6 +217,7 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     num_test_classes = len(val_loader.dataset.split_df['label_id'].unique())
     confusion_matrix = np.zeros((num_test_classes, num_test_classes))
     all_df = []
+    all_faults = []
     
 
     total_top1, total_top3 = 0, 0
@@ -184,6 +238,13 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
         
         few_shotk_correct = metrics.topks_correct(preds,
                                                     labels, (1, 3))
+
+        """
+        vid_names = video_names_from_meta(meta)
+        #print(f"video names in test_epoch: {vid_names}")
+        few_shotk_correct, faults = topks_correct_with_misclassified_video_names(preds,labels,(1,3),vid_names) 
+        all_faults.extend(faults)
+        """
         
         fsh_acc_top1, fsh_acc_top3 = [
             (x / preds.size(0)) * 100.0 for x in few_shotk_correct
@@ -254,6 +315,9 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
         columns=[f'pred_{i}' for i in range(num_test_classes)]
     )
     conf.to_csv(os.path.join(cfg.OUTPUT_DIR,'confusion_matrix.csv'))
+
+    #with open(os.path.join(cfg.OUTPUT_DIR,'incorrect_dump.txt'), "w") as f:
+    #    f.write("\n".join(all_faults))
     # val_meter.reset()
 
 # pylint: disable=redefined-outer-name
