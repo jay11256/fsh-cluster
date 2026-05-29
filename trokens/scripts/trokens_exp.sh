@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=ds6_trokens
+#SBATCH --job-name=chase_exp
 #SBATCH --ntasks=4
 #SBATCH --gres=gpu:rtxa5000:1
 #SBATCH --qos=default
@@ -107,7 +107,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
 	tools/run_net.py --init_method env:// --new_dist_init \
 	--cfg configs/trokens/$CONFIG_TO_USE.yaml \
 	WANDB.ID $WANDB_ID \
-	WANDB.EXP_NAME $SECONDARY_EXP_NAME \
+	WANDB.EXP_NAME "${EXP_NAME}_${SECONDARY_EXP_NAME}" \
 	MASTER_PORT $MASTER_PORT \
 	OUTPUT_DIR $OUTPUT_DIR \
 	NUM_GPUS $NUM_GPUS \
