@@ -111,14 +111,14 @@ class Fshdata(BaseDataset):
                 logger.warning("FILTER_ONE enabled but FILTER_ONE_BEHAVIORS is empty; no filtering applied.")
 
         if FILTER_TWO:
-            requested = set([str(x).strip() for x in FILTER_ONE_BEHAVIORS if str(x).strip() != ""])
+            requested = set([str(x).strip() for x in FILTER_TWO_BEHAVIORS if str(x).strip() != ""])
             if len(requested) > 0:
                 before = len(self.dataset_df)
                 self.dataset_df = self.dataset_df[self.dataset_df['behavior'].isin(requested)].reset_index(drop=True)
                 after = len(self.dataset_df)
-                logger.info(f"FILTER_ONE enabled: kept {after}/{before} rows by behavior filter.")
+                logger.info(f"FILTER_TWO enabled: kept {after}/{before} rows by behavior filter.")
             else:
-                logger.warning("FILTER_ONE enabled but FILTER_ONE_BEHAVIORS is empty; no filtering applied.")
+                logger.warning("FILTER_TWO enabled but FILTER_TWO_BEHAVIORS is empty; no filtering applied.")
 
         # Create id_labels
         unique_behaviors = sorted(self.dataset_df['behavior'].unique())
