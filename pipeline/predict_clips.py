@@ -38,7 +38,7 @@ def _load_model(model_path, cfg_path=None):
     cfg.merge_from_file(cfg_path)
     cfg.POINT_INFO.USE_CORRELATION = True
     cfg.TRAIN.ENABLE = False
-    cfg.TEST.ENABLE = True
+    cfg.TEST.ENABLE = False
     cfg.NUM_GPUS = torch.cuda.device_count()
     cfg = assert_and_infer_cfg(cfg)
 
@@ -270,9 +270,26 @@ def predict_clips(clips_dir, model_path, pkl_dir=None,
 def main():
     clips = "/fs/vulcan-projects/fsh_track/jason/fsh-cluster/pipeline/clips"
     pkls  = "/fs/vulcan-projects/fsh_track/jason/fsh-cluster/pipeline/pkls"  # set to None to skip points
-    model = "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-none-both/checkpoints/checkpoint_best.pyth"
+    model = "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-sam3-both/checkpoints/checkpoint_best.pyth"
     preds, order = predict_clips(clips, model, pkl_dir=pkls)
+    preds = torch.softmax(preds, dim=1)
+
+    one_hot = torch.zeros_like(preds)
+    preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
+
     print(preds)
     # print(order)
+
+    from visualize_matrix import visualize_matrix
+    visualize_matrix(
+        ground_truth_path = "/fs/vulcan-projects/fsh_track/raw_data/box/AR_natural_spawns_JB/080225_spawn_B1-5_ARdoublehet/080225_spawn_B1-5_ARdoublehet.tsv",
+        pred_matrix = preds.T,
+        threshold = 0.5,
+        window_len = 14,
+        overlap_len = 4,
+        save_path = "test_vis.png"
+    )
+
+    # /fs/vulcan-projects/fsh_track/raw_data/box/AR_natural_spawns_JB/080225_spawn_B1-5_ARdoublehet/080225_spawn_B1-5_ARdoublehet.tsv
 
 main()

@@ -25,7 +25,6 @@ import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D
  
- 
 def visualize_matrix(
     ground_truth_path: str,
     pred_matrix: np.ndarray,
