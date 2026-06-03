@@ -249,12 +249,12 @@ def predict_clips(clips_dir, model_path, pkl_dir=None,
             stem = os.path.splitext(os.path.basename(clip_path))[0]
             pkl_path = os.path.join(pkl_dir, stem + '.pkl')
             if not os.path.exists(pkl_path):
-                raise FileNotFoundError(
-                    f"Expected pkl file not found: {pkl_path}\n"
-                    f"Ensure every clip in {clips_dir} has a matching .pkl in {pkl_dir}"
-                )
-            point_meta = _load_pkl_metadata(pkl_path, cfg, max_x, max_y, index_select)
-            metadata.update(point_meta)
+                raise FileNotFoundError(...)
+            try:
+                point_meta = _load_pkl_metadata(pkl_path, cfg, max_x, max_y, index_select)
+                metadata.update(point_meta)
+            except ValueError as e:
+                print(f"WARNING: Skipping point data for {clip_path}: {e}")
 
         input_dict = {'video': frames_tensor, 'metadata': metadata}
 
@@ -268,10 +268,14 @@ def predict_clips(clips_dir, model_path, pkl_dir=None,
 
 
 def main():
-    clips = "/fs/vulcan-projects/fsh_track/jason/fsh-cluster/pipeline/clips"
-    pkls  = "/fs/vulcan-projects/fsh_track/jason/fsh-cluster/pipeline/pkls"  # set to None to skip points
+    clips = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/clips/"
+    pkls  = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/pkls/"  # set to None to skip points
     model = "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-sam3-both/checkpoints/checkpoint_best.pyth"
-    preds, order = predict_clips(clips, model, pkl_dir=pkls)
+    # preds, order = predict_clips(clips, model, pkl_dir=pkls)
+
+    # np.save("/fs/vulcan-projects/fsh_track/jason/pipeline_testing/pred_matrix.npy", preds)
+    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/jason/pipeline_testing/pred_matrix.npy"))
+
     preds = torch.softmax(preds, dim=1)
 
     one_hot = torch.zeros_like(preds)
@@ -282,14 +286,12 @@ def main():
 
     from visualize_matrix import visualize_matrix
     visualize_matrix(
-        ground_truth_path = "/fs/vulcan-projects/fsh_track/raw_data/box/AR_natural_spawns_JB/080225_spawn_B1-5_ARdoublehet/080225_spawn_B1-5_ARdoublehet.tsv",
+        ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/charmander_gt.tsv",
         pred_matrix = preds.T,
-        threshold = 0.5,
-        window_len = 14,
-        overlap_len = 4,
-        save_path = "test_vis.png"
+        threshold = 0.1667,
+        window_len = 4,
+        overlap_len = 2,
+        save_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/test_vis.png"
     )
-
-    # /fs/vulcan-projects/fsh_track/raw_data/box/AR_natural_spawns_JB/080225_spawn_B1-5_ARdoublehet/080225_spawn_B1-5_ARdoublehet.tsv
 
 main()
