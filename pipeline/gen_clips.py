@@ -12,7 +12,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 import time
-import sys
+import sys 
 
 # ---------------------------------------------------------------------------
 # Args
@@ -22,10 +22,11 @@ parser = argparse.ArgumentParser(description="Split video and run SAM3 on each c
 parser.add_argument("video_path",               type=str,   help="Path to the input video")
 parser.add_argument("--prompt",                 type=str,   default="fish")
 parser.add_argument("--max_objects",            type=int,   default=2)
-parser.add_argument("--pkl_dir",             type=str,   default="./pkls")
-parser.add_argument("--clip_dir",          type=str,   default="./clips")
-parser.add_argument("--window_len",             type=int,   default=14)
-parser.add_argument("--overlap_len",            type=int,   default=4)
+parser.add_argument("--pkl_dir",                type=str,   default="./pkls")
+parser.add_argument("--clip_dir",               type=str,   default="./clips")
+parser.add_argument("--logs_dir",               type=str,   default="./logs",   help="Directory for per-clip .out log files")
+parser.add_argument("--window_len",             type=int,   default=4)
+parser.add_argument("--overlap_len",            type=int,   default=2)
 parser.add_argument("--inference_frame_start",  type=int,   default=0)
 # SLURM array sharding — set automatically by the .sh launcher
 parser.add_argument("--shard_id",    type=int, default=0,  help="Which shard this job processes (SLURM_ARRAY_TASK_ID)")
@@ -38,6 +39,7 @@ prompt                = args.prompt
 MAX_OBJECTS           = args.max_objects
 OUTPUT_DIR            = args.pkl_dir
 TEMP_CLIP_DIR         = args.clip_dir
+LOGS_DIR              = args.logs_dir
 WINDOW_LEN            = args.window_len
 OVERLAP_LEN           = args.overlap_len
 inference_frame_start = args.inference_frame_start
@@ -46,6 +48,7 @@ NUM_SHARDS            = args.num_shards
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(TEMP_CLIP_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Initialize SAM3 (once)
@@ -62,6 +65,9 @@ print(f"SAM3 initialized on {torch.cuda.device_count()} GPU(s)")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+NUM_POINTS  = 9   # 9 points per object (3x3 grid)
+NUM_OBJECTS = 2   # always exactly 2 objects per pkl
 
 def get_video_duration(video_path):
     result = subprocess.run(
@@ -102,6 +108,17 @@ def propagate_in_video(predictor, session_id):
 
 
 def get_uniform_points(mask, n_points=9):
+    """Extract exactly n_points uniformly distributed across a binary mask using
+    a sqrt(n) x sqrt(n) grid (3x3 for 9 points). Always returns exactly n_points
+    — cells with no mask pixels fall back to the nearest mask pixel.
+
+    Args:
+        mask:     2D binary numpy array
+        n_points: number of points (must be a perfect square, default 9)
+
+    Returns:
+        List of exactly n_points (x, y) tuples, or None if mask is empty.
+    """
     ys, xs = np.where(mask > 0)
     if len(xs) == 0:
         return None
@@ -109,7 +126,7 @@ def get_uniform_points(mask, n_points=9):
     grid  = int(round(n_points ** 0.5))
     x_min, x_max = int(xs.min()), int(xs.max())
     y_min, y_max = int(ys.min()), int(ys.max())
-    mask_coords = np.stack([xs, ys], axis=1).astype(np.float32)
+    mask_coords  = np.stack([xs, ys], axis=1).astype(np.float32)
 
     points = []
     for row in range(grid):
@@ -128,26 +145,28 @@ def get_uniform_points(mask, n_points=9):
             if len(cell_coords) > 0:
                 px, py = float(cell_coords[:, 0].mean()), float(cell_coords[:, 1].mean())
             else:
+                # Fall back to nearest mask pixel to cell centre
                 gx, gy = (x_lo + x_hi) / 2, (y_lo + y_hi) / 2
                 dists  = np.sqrt((mask_coords[:, 0] - gx)**2 + (mask_coords[:, 1] - gy)**2)
                 idx_   = np.argmin(dists)
                 px, py = float(mask_coords[idx_, 0]), float(mask_coords[idx_, 1])
 
             points.append((px, py))
+
+    assert len(points) == n_points, f"Expected {n_points} points, got {len(points)}"
     return points
 
 
-def process_clip(predictor, clip_path, output_dir, prompt, max_objects, inference_frame_start):
+def process_clip(predictor, clip_path, output_dir, logs_dir, prompt, max_objects, inference_frame_start):
     """Run SAM3 on one clip, save a .pkl, and write a .out log. Returns output path."""
     clip_name = os.path.splitext(os.path.basename(clip_path))[0]
     pkl_path  = os.path.join(output_dir, f"{clip_name}.pkl")
-    out_path  = os.path.join(output_dir, f"{clip_name}.out")
+    out_path  = os.path.join(logs_dir,   f"{clip_name}.out")
 
     if os.path.exists(pkl_path):
         print(f"  [skip] {pkl_path} already exists")
         return pkl_path
 
-    # Redirect stdout/stderr to .out file for this clip
     with open(out_path, "w") as log:
         def logprint(*args, **kwargs):
             msg = " ".join(str(a) for a in args)
@@ -172,8 +191,8 @@ def process_clip(predictor, clip_path, output_dir, prompt, max_objects, inferenc
 
         centroids, points_9 = {}, {}
         for frame_idx, objs in vid_seg.items():
-            centroids[frame_idx] = {}
-            points_9[frame_idx]  = {}
+            centroids[frame_idx]  = {}
+            points_9[frame_idx]   = {}
             for obj_id, mask in objs.items():
                 if mask is None:
                     continue
@@ -186,40 +205,44 @@ def process_clip(predictor, clip_path, output_dir, prompt, max_objects, inferenc
                 if len(xs) == 0:
                     continue
                 centroids[frame_idx][obj_id] = (float(xs.mean()), float(ys.mean()))
-                pts = get_uniform_points(mask, n_points=9)
+                pts = get_uniform_points(mask)
                 if pts is not None:
                     points_9[frame_idx][obj_id] = pts
 
         all_obj_ids_orig = sorted({oid for fd in centroids.values() for oid in fd})
         logprint(f"Found {len(all_obj_ids_orig)} objects: {all_obj_ids_orig}")
 
-        if len(all_obj_ids_orig) <= max_objects:
-            processed_centroids = centroids
-        else:
-            trajectories = {
-                oid: [(fi, centroids[fi].get(oid)) for fi in sorted(centroids)]
-                for oid in all_obj_ids_orig
-            }
-            scores = {
-                oid: (
-                    sum(1 for _, p in traj if p is not None),
-                    -next((i for i, (_, p) in enumerate(traj) if p is not None), float("inf")),
-                    oid,
-                )
-                for oid, traj in trajectories.items()
-            }
-            primary = {oid for oid, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:max_objects]}
-            processed_centroids = {
-                fi: {oid: pos for oid, pos in fd.items() if oid in primary}
-                for fi, fd in centroids.items()
-            }
+        # Always select exactly NUM_OBJECTS=2, ranked by appearance count then earliest frame
+        trajectories = {
+            oid: [(fi, centroids[fi].get(oid)) for fi in sorted(centroids)]
+            for oid in all_obj_ids_orig
+        }
+        scores = {
+            oid: (
+                sum(1 for _, p in traj if p is not None),
+                -next((i for i, (_, p) in enumerate(traj) if p is not None), float("inf")),
+                oid,
+            )
+            for oid, traj in trajectories.items()
+        }
+        primary = [oid for oid, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:NUM_OBJECTS]]
 
-        all_obj_ids   = sorted({oid for fd in processed_centroids.values() for oid in fd})
-        num_objects   = len(all_obj_ids)
-        NUM_POINTS    = 9
+        # Pad with a placeholder (-1) if fewer than NUM_OBJECTS were detected
+        while len(primary) < NUM_OBJECTS:
+            primary.append(-(len(primary) + 1))  # sentinel id: -1, -2, ...
+            logprint(f"Warning: only {len(all_obj_ids_orig)} object(s) detected; padding to {NUM_OBJECTS}")
+
+        processed_centroids = {
+            fi: {oid: pos for oid, pos in fd.items() if oid in primary}
+            for fi, fd in centroids.items()
+        }
+
+        all_obj_ids   = primary  # fixed order, always length NUM_OBJECTS
+        num_objects   = NUM_OBJECTS
         num_frames    = max(processed_centroids.keys()) + 1
         obj_id_to_idx = {oid: i for i, oid in enumerate(all_obj_ids)}
 
+        # Shape: (frames, NUM_OBJECTS * NUM_POINTS, 2) — always 2*9=18 columns
         arr = np.full((num_frames, num_objects * NUM_POINTS, 2), -1, dtype=np.float32)
         for fi, objs in points_9.items():
             for oid, pts in objs.items():
@@ -245,6 +268,13 @@ def process_clip(predictor, clip_path, output_dir, prompt, max_objects, inferenc
                         queries[col] = fi
         queries = torch.from_numpy(queries)
 
+        # Sanity check: must always be exactly NUM_OBJECTS*NUM_POINTS=18 columns
+        expected_cols = NUM_OBJECTS * NUM_POINTS
+        assert tracks.shape[1] == expected_cols,     f"tracks col mismatch: {tracks.shape[1]} != {expected_cols}"
+        assert visibility.shape[1] == expected_cols, f"visibility col mismatch: {visibility.shape[1]} != {expected_cols}"
+        assert ids.shape[0] == expected_cols,        f"ids length mismatch: {ids.shape[0]} != {expected_cols}"
+        assert queries.shape[0] == expected_cols,    f"queries length mismatch: {queries.shape[0]} != {expected_cols}"
+
         with open(pkl_path, "wb") as f:
             pickle.dump({
                 "pred_tracks":     tracks.half(),
@@ -253,6 +283,7 @@ def process_clip(predictor, clip_path, output_dir, prompt, max_objects, inferenc
                 "point_queries":   queries,
             }, f)
 
+        logprint(f"num_objects: {num_objects} (fixed)  points_per_object: {NUM_POINTS}  total_cols: {num_objects * NUM_POINTS}")
         logprint(f"pred_tracks shape:     {tuple(tracks.shape)}")
         logprint(f"pred_visibility shape: {tuple(visibility.shape)}")
         logprint(f"Saved pkl: {pkl_path}")
@@ -291,6 +322,7 @@ clip_schedule = [
 ]
 
 print(f"Shard {SHARD_ID}/{NUM_SHARDS}: processing {len(clip_schedule)}/{total_clips} clips")
+print(f"Points per object: {NUM_POINTS} (3x3 grid)  |  Objects per clip: {NUM_OBJECTS} (fixed)  |  Total cols: {NUM_OBJECTS * NUM_POINTS}")
 
 clip_queue = queue.Queue(maxsize=2)
 enc_thread = threading.Thread(
@@ -309,7 +341,7 @@ with tqdm(total=len(clip_schedule), desc=f"SAM3 shard {SHARD_ID}", file=sys.stdo
             break
 
         clip_start = time.time()
-        process_clip(predictor, clip_path, OUTPUT_DIR, prompt, MAX_OBJECTS, inference_frame_start)
+        process_clip(predictor, clip_path, OUTPUT_DIR, LOGS_DIR, prompt, MAX_OBJECTS, inference_frame_start)
         clip_elapsed = time.time() - clip_start
 
         clip_name = os.path.splitext(os.path.basename(clip_path))[0]
@@ -317,8 +349,8 @@ with tqdm(total=len(clip_schedule), desc=f"SAM3 shard {SHARD_ID}", file=sys.stdo
         pbar.update(1)
 
 total_elapsed = time.time() - pipeline_start
-hours, rem     = divmod(int(total_elapsed), 3600)
-mins, secs     = divmod(rem, 60)
+hours, rem    = divmod(int(total_elapsed), 3600)
+mins, secs    = divmod(rem, 60)
 print(f"\nDone. Total time: {hours:02d}:{mins:02d}:{secs:02d}")
 
 enc_thread.join()
