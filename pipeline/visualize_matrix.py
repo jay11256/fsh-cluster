@@ -99,6 +99,7 @@ def visualize_matrix(
         "behavior type",
         next((c for c in gt.columns if "behavior" in c.lower()), None),
     )
+
     if time_col is None or beh_col is None:
         raise ValueError(
             f"Could not locate 'Time' and 'Behavior type' columns. "
@@ -106,7 +107,37 @@ def visualize_matrix(
         )
 
     gt_times     = gt[time_col].values.astype(float)
-    gt_behaviors = gt[beh_col].values.astype(str)
+    gt_behaviors = gt[beh_col].astype(str).str.strip().values
+
+
+    # Mapping/dict from Will's data6make
+
+    behavior_map = {
+        "peck": "Peck",
+        "quiver-m": "Quiver",
+        "quiver (male)": "Quiver",
+        "bite (male)": "Bite",
+        "tilt (specify sex)": "Tilt",
+        "peck (specify sex)": "Peck",
+        "lead (male)": "Lead",
+        "lead-m": "Lead",
+        "pot entry": "Enter Pot",
+        "chase/charge (male)": "Chase/Charge",
+        "run/flee (female)": "Run/Flee",
+        "male quiver": "Quiver",
+        "exit plot": "Exit Plot",
+        "male lead": "Lead",
+        "egg retrieval": "Egg Retrieval",
+        "circling": "Circling",
+        "female follow": "Follow",
+        "follow-f": "Follow",
+        "spawning-f": "Spawning",
+        "follow (female)": "Follow",
+    }
+    gt_behaviors = np.array(
+        [behavior_map.get(beh.lower(), beh) for beh in gt_behaviors],
+        dtype=str,
+    )
 
     # ── 2. Behavior label mapping ─────────────────────────────────────────────
     num_behaviors, num_clips = pred_matrix.shape
