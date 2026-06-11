@@ -106,7 +106,7 @@ def visualize_matrix(
             f"Columns found: {list(gt.columns)}"
         )
 
-    gt_times     = gt[time_col].values.astype(float)
+    gt_times     = gt[time_col].values.astype(float) - 500.0
     gt_behaviors = gt[beh_col].astype(str).str.strip().values
 
 
@@ -152,7 +152,7 @@ def visualize_matrix(
     else:
         # Default: sorted unique names from the TSV, in alphabetical order.
         # Row i of pred_matrix is assumed to correspond to the i-th name.
-        labels = sorted(set(gt_behaviors))
+        labels = ["Bite", "Lead", "Peck", "Quiver", "Run/Flee", "Tilt"]
         if len(labels) != num_behaviors:
             raise ValueError(
                 f"Found {len(labels)} unique behaviors in the TSV but "

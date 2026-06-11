@@ -23,7 +23,7 @@ CHECKPOINT_FILE = (
     "/fs/vulcan-projects/fsh_track/models/ds6/5_way-5_shot-none-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/55None_demosrun"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing"
 
 #Dont need changing
 TORCH_HOME = (
@@ -35,8 +35,8 @@ FILTER_ONE = True
 POINT_INFO_NAME = "cotracker3_bip_fr_32"
 N_WAY = 5
 K_SHOT = 3
-NUM_GPUS = 4
-NUM_WORKERS = 1
+NUM_GPUS = 1
+NUM_WORKERS = 4
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".webm")
 
 def _ensure_data_csv(data_dir, output_dir, data_csv_path):
@@ -109,19 +109,25 @@ def main():
         "TEST.CHECKPOINT_FILE_PATH", CHECKPOINT_FILE,
     ]
 
-    result = subprocess.run(cmd, check=False)
+    # result = subprocess.run(cmd, check=False)
 
     preds = torch.from_numpy(np.load(os.path.join(output_dir,'preds.npy')))
+
+    preds = torch.softmax(preds, dim=1)
+    # one_hot = torch.zeros_like(preds)
+    # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
+    print(preds)
+
     from visualize_matrix import visualize_matrix
     visualize_matrix(
         ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/charmander_gt.tsv",
         pred_matrix = preds.T,
-        threshold = 1.2,
+        threshold = 0.16,
         window_len = 4,
         overlap_len = 2,
-        save_path = os.path.join(output_dir,'test_vis.png')
+        save_path = os.path.join(output_dir,'softmax_16.png')
     )
-    sys.exit(result.returncode)
+    # sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
