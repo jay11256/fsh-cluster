@@ -519,6 +519,8 @@ _C.DATA_LOADER.FILTER_ONE = False
 # Use only behaviors found in filter two (see fsh_Data.py)
 _C.DATA_LOADER.FILTER_TWO = False
 
+# Specifys the csv for data to be tested upon, if None then attempts to use the only csv in the data folder
+_C.DATA_LOADER.DATA_CSV_PATH = None
 
 
 

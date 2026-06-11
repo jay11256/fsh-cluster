@@ -44,15 +44,19 @@ class Fshdata(BaseDataset):
         CUT_SMALLS = self.cfg.DATA_LOADER.CUT_SMALLS
         FILTER_ONE = self.cfg.DATA_LOADER.FILTER_ONE
         FILTER_TWO = self.cfg.DATA_LOADER.FILTER_TWO
+        CSV_FILE = self.cfg.DATA_LOADER.DATA_CSV_PATH
         
         # Read CSV file
-        #csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset6/dataset6.csv"
-        csv_files = glob.glob(os.path.join(self.data_root, "*.csv"))
+        if CSV_FILE:
+            csv_path = CSV_FILE
+        else:
+            #csv_path = "/fs/vulcan-projects/fsh_track/processed_data/dataset6/dataset6.csv"
+            csv_files = glob.glob(os.path.join(self.data_root, "*.csv"))
 
-        if len(csv_files) != 1:
-            raise FileNotFoundError(f"Expected exactly one CSV in {self.data_root}, found {len(csv_files)}")
+            if len(csv_files) != 1:
+                raise FileNotFoundError(f"Expected exactly one CSV in {self.data_root}, found {len(csv_files)}")
 
-        csv_path = csv_files[0]
+            csv_path = csv_files[0]
 
         if not os.path.exists(csv_path):
             raise FileNotFoundError(f"CSV file not found at {csv_path}")
@@ -60,7 +64,7 @@ class Fshdata(BaseDataset):
         self.dataset_df = pd.read_csv(csv_path)
 
         # Validate required columns (expect `video_path` column)
-        required_columns = ['behavior', 'start_time', 'end_time', 'video_path']
+        required_columns = ['behavior', 'video_path']
         missing_columns = [col for col in required_columns if col not in self.dataset_df.columns]
         if missing_columns:
             raise ValueError(f"Missing required columns in CSV: {missing_columns}")

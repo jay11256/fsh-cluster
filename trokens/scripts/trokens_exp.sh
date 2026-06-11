@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=chase_exp
+#SBATCH --job-name=get_preds_test
 #SBATCH --ntasks=4
 #SBATCH --gres=gpu:rtxa5000:1
 #SBATCH --qos=default
@@ -7,8 +7,8 @@
 #SBATCH --partition=tron
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/trokens_chase_exp_%j.out
-#SBATCH --error=../trial_run_outputs/trokens_chase_exp_%j.out
+#SBATCH --output=../trial_run_outputs/trokens_pointformer_%j.out
+#SBATCH --error=../trial_run_outputs/trokens_pointformer_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE 
@@ -47,7 +47,7 @@ case $PT_DATA in
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds6/"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/pkls"
 		export NUM_POINTS_TO_SAMPLE=18
         ;;
 esac
@@ -63,11 +63,11 @@ export CONFIG_TO_USE=fshdata
 export EXP_NAME=chase_exp
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset6
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/chase_exp
+export DATA_DIR=/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/clips
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/scratch/new_csv1
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
-export NUM_CLASSES=7
-export FILTER_TWO=True
+export NUM_CLASSES=6
+export FILTER_ONE=True
 
 case $MODE in
 	"train")
@@ -95,7 +95,7 @@ export POINT_INFO_NAME="cotracker3_bip_fr_32"
 export WANDB_ID="${EXP_NAME}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
-#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-none-both/checkpoints/checkpoint_best.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-sam3-both/checkpoints/checkpoint_best.pyth
 
 mkdir -p $OUTPUT_DIR
 
@@ -125,8 +125,8 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
 	MODEL.MOTION_MODULE.USE_HOD_MOTION_MODULE True \
     TRAIN.ENABLE $TRAIN_ENABLE \
     TEST.ENABLE $TEST_ENABLE \
-	DATA_LOADER.FILTER_TWO $FILTER_TWO \
+	DATA_LOADER.FILTER_ONE $FILTER_ONE \
 	MODEL.NUM_CLASSES $NUM_CLASSES 
-#	TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
+	#TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 
 	

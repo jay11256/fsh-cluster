@@ -275,6 +275,9 @@ def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
         preds = preds.cpu().numpy()
         labels = labels.cpu().numpy()
 
+
+        #vid_names = video_names_from_meta(meta)
+        #print(f"video names in test_epoch: {vid_names[0]} {vid_names[1]} {vid_names[2]}")
         #print(preds[0])
         #print(preds[1])
         #print(preds[2])
