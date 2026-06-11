@@ -10,20 +10,20 @@ import torch
 import numpy as np
 
 #Data
-DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/clips"
-DATA_CSV_PATH = None #Leave none unless csv made in advance
+DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/clips"
+DATA_CSV_PATH = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/55None_demosrun/predict_clips.csv" #Leave none unless csv made in advance
 #Points
-POINT_INFO_ENABLE = True
+POINT_INFO_ENABLE = False
 TROKENS_PT_DATA = (
-    "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/pkls"
+    "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/pkls"
 )
-NUM_POINTS_TO_SAMPLE = 18
+NUM_POINTS_TO_SAMPLE = 256
 #Model
 CHECKPOINT_FILE = (
-    "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-sam3-both/checkpoints/checkpoint_best.pyth"
+    "/fs/vulcan-projects/fsh_track/models/ds6/5_way-5_shot-none-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/Baseline"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/55None_demosrun"
 
 #Dont need changing
 TORCH_HOME = (
@@ -35,8 +35,8 @@ FILTER_ONE = True
 POINT_INFO_NAME = "cotracker3_bip_fr_32"
 N_WAY = 5
 K_SHOT = 3
-NUM_GPUS = 1
-NUM_WORKERS = 4
+NUM_GPUS = 4
+NUM_WORKERS = 1
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".webm")
 
 def _ensure_data_csv(data_dir, output_dir, data_csv_path):
@@ -55,17 +55,17 @@ def _ensure_data_csv(data_dir, output_dir, data_csv_path):
 
     csv_path = os.path.join(output_dir, "predict_clips.csv")
     with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["video_path", "behavior"])
+        writer = csv.DictWriter(f, fieldnames=["video_path", "behavior","split"])
         writer.writeheader()
         writer.writerows(
-            {"video_path": path, "behavior": "Lead"} for path in video_paths
+            {"video_path": path, "behavior": "Lead", "split": "test"} for path in video_paths
         )
 
     return csv_path
 
 
 def main():
-    master_port = f"{random.randint(0, 9999):04d}"
+    master_port = f"{random.randint(1250, 9999):04d}"
 
     exp_name = os.environ.get("EXP_NAME", "")
     secondary_exp_name = os.environ.get("SECONDARY_EXP_NAME", "")
@@ -116,7 +116,7 @@ def main():
     visualize_matrix(
         ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/charmander_gt.tsv",
         pred_matrix = preds.T,
-        threshold = 0.1667,
+        threshold = 1.2,
         window_len = 4,
         overlap_len = 2,
         save_path = os.path.join(output_dir,'test_vis.png')
