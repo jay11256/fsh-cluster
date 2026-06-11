@@ -92,7 +92,6 @@ def get_preds(val_loader, model, cfg):
     # Evaluation mode enabled. The running stats would not be updated.
     model.eval()
 
-    num_test_classes = len(val_loader.dataset.split_df['label_id'].unique())
     all_preds = []
 
     for cur_iter, (inputs, labels, _, meta) in enumerate(val_loader):
@@ -110,9 +109,7 @@ def get_preds(val_loader, model, cfg):
             preds, labels = du.all_gather([preds, labels])
 
         preds = preds.cpu().numpy()
-        print(preds)
         all_preds.extend(preds.tolist())
-        continue
 
     np.save(os.path.join(cfg.OUTPUT_DIR,'preds'), all_preds)
 
