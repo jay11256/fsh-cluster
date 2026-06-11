@@ -36,7 +36,19 @@ def _load_model(model_path, cfg_path=None):
 
     cfg = get_cfg()
     cfg.merge_from_file(cfg_path)
-    cfg.POINT_INFO.USE_CORRELATION = True
+    #will changes
+    cfg.DATA.USE_RAND_AUGMENT = True
+    cfg.FEW_SHOT.K_SHOT = 3
+    cfg.FEW_SHOT.N_WAY = 5
+    cfg.POINT_INFO.ENABLE = False
+    cfg.POINT_INFO.NUM_POINTS_TO_SAMPLE = 256 #PROBLEM HERE
+    cfg.MODEL.FEAT_EXTRACTOR = 'dino'
+    cfg.MODEL.DINO_CONFIG = 'dinov2_vitb14'
+    cfg.MODEL.MOTION_MODULE.USE_CROSS_MOTION_MODULE = True
+    cfg.MODEL.MOTION_MODULE.USE_HOD_MOTION_MODULE = True
+    cfg.MODEL.NUM_CLASSES = 6
+    #end will
+    cfg.POINT_INFO.USE_CORRELATION = True #idk what this does
     cfg.TRAIN.ENABLE = False
     cfg.TEST.ENABLE = False
     cfg.NUM_GPUS = torch.cuda.device_count()
@@ -268,22 +280,22 @@ def predict_clips(clips_dir, model_path, pkl_dir=None,
 
 
 def main():
-    clips = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/clips/"
-    pkls  = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/pkls/"  # set to None to skip points
+    clips = "/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/clips"
+    pkls  = "/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/pkls"  # set to None to skip points
     model = "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-sam3-both/checkpoints/checkpoint_best.pyth"
-    # preds, order = predict_clips(clips, model, pkl_dir=pkls)
+    preds, order = predict_clips(clips, model, pkl_dir=pkls)
 
-    # np.save("/fs/vulcan-projects/fsh_track/jason/pipeline_testing/pred_matrix.npy", preds)
-    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/jason/pipeline_testing/pred_matrix.npy"))
+    np.save("/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/pred_matrix.npy", preds)
+    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/pred_matrix.npy"))
 
-    preds = torch.softmax(preds, dim=1)
+    #preds = torch.softmax(preds, dim=1)
 
-    one_hot = torch.zeros_like(preds)
-    preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
+    #one_hot = torch.zeros_like(preds)
+    #preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
 
     print(preds)
     # print(order)
-
+    '''
     from visualize_matrix import visualize_matrix
     visualize_matrix(
         ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/charmander_gt.tsv",
@@ -293,5 +305,5 @@ def main():
         overlap_len = 2,
         save_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/test_vis.png"
     )
-
+    '''
 main()
