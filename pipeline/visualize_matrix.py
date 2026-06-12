@@ -297,11 +297,22 @@ def compute_detection_report(
 
             recalls = tp_cum / n_gt
             precisions = tp_cum / np.maximum(tp_cum + fp_cum, 1e-8)
+
+            
             ap = _compute_ap(recalls, precisions)
 
             per_iou_ap[iou_thresh] = ap
             aps_by_iou[iou_thresh].append(ap)
 
+        precision = _safe_divide(clip_tp, clip_tp + clip_fp)
+        recall = _safe_divide(clip_tp, clip_tp + clip_fn)
+
+        if np.isnan(precision) or np.isnan(recall):
+            f1 = np.nan
+        elif precision + recall == 0:
+            f1 = 0.0
+        else:
+            f1 = 2 * precision * recall / (precision + recall)
         class_metrics[label] = {
             "num_gt_events": n_gt,
             "num_pred_events": len(pred_spans),
@@ -314,6 +325,7 @@ def compute_detection_report(
             "clip_fn": clip_fn,
             "precision": _safe_divide(clip_tp, clip_tp + clip_fp),
             "recall": _safe_divide(clip_tp, clip_tp + clip_fn),
+            "f1": f1,
             "ap_by_iou": per_iou_ap,
         }
 
@@ -323,6 +335,7 @@ def compute_detection_report(
             for iou, vals in aps_by_iou.items()
         },
         "class_metrics": class_metrics,
+        
     }
 
 
@@ -367,30 +380,74 @@ def _print_detection_report(report, labels):
         print(f"mAP@IoU={iou:.2f}: {_format_metric(value)}")
 
     print("\nPer-class clip metrics:")
-    print("-" * 96)
+    print("-" * 110)
     header = (
-        f"{'Class':<14} {'GT ev':>5} {'Pred ev':>7} {'Eval clips':>10} "
-        f"{'GT clips':>8} {'Pred clips':>10} {'TP':>5} {'FP':>5} {'FN':>5} "
-        f"{'Precision':>10} {'Recall':>10}"
+        f"{'Class':<15}"
+        f"{'GT ev':>6}"
+        f"{'Pred ev':>8}"
+        f"{'Eval clips':>11}"
+        f"{'GT clips':>9}"
+        f"{'Pred clips':>11}"
+        f"{'TP':>6}"
+        f"{'FP':>6}"
+        f"{'FN':>6}"
+        f"{'Precision':>11}"
+        f"{'Recall':>11}"
+        f"{'F1':>11}"
     )
     print(header)
-    print("-" * 96)
+    print("-" * len(header))
 
     for label in labels:
         metrics = report["class_metrics"][label]
         print(
-            f"{label:<14} "
-            f"{metrics['num_gt_events']:>5} "
-            f"{metrics['num_pred_events']:>7} "
-            f"{metrics['num_eval_clips']:>10} "
-            f"{metrics['num_gt_clips']:>8} "
-            f"{metrics['num_pred_clips']:>10} "
-            f"{metrics['clip_tp']:>5} "
-            f"{metrics['clip_fp']:>5} "
-            f"{metrics['clip_fn']:>5} "
-            f"{_format_metric(metrics['precision']):>10} "
-            f"{_format_metric(metrics['recall']):>10}"
+            f"{label:<15}"
+            f"{metrics['num_gt_events']:>6}"
+            f"{metrics['num_pred_events']:>8}"
+            f"{metrics['num_eval_clips']:>11}"
+            f"{metrics['num_gt_clips']:>9}"
+            f"{metrics['num_pred_clips']:>11}"
+            f"{metrics['clip_tp']:>6}"
+            f"{metrics['clip_fp']:>6}"
+            f"{metrics['clip_fn']:>6}"
+            f"{_format_metric(metrics['precision']):>11}"
+            f"{_format_metric(metrics['recall']):>11}"
+            f"{_format_metric(metrics['f1']):>11}"
         )
+    precisions = []
+    recalls = []
+    f1s = []
+
+    for label in labels:
+
+        metrics = report["class_metrics"][label]
+
+        if not np.isnan(metrics["precision"]):
+            precisions.append(metrics["precision"])
+
+        if not np.isnan(metrics["recall"]):
+            recalls.append(metrics["recall"])
+
+        if not np.isnan(metrics["f1"]):
+            f1s.append(metrics["f1"])
+
+    print("-" * len(header))
+
+    print(
+        f"{'Mean':<15}"
+        f"{'':>6}"
+        f"{'':>8}"
+        f"{'':>11}"
+        f"{'':>9}"
+        f"{'':>11}"
+        f"{'':>6}"
+        f"{'':>6}"
+        f"{'':>6}"
+        f"{_format_metric(np.mean(precisions)):>11}"
+        f"{_format_metric(np.mean(recalls)):>11}"
+        f"{_format_metric(np.mean(f1s)):>11}"
+    )
+    
 
 def _load_ground_truth(path: str, video_window: tuple):
     """
@@ -531,15 +588,20 @@ def visualize_matrix(
     colors = [cmap(i % 10) for i in range(num_behaviors)]
 
     # ── 5. Figure layout ──────────────────────────────────────────────────────
-    GT_HEIGHT     = 3
-    PRED_HEIGHT   = 1
-    height_ratios = [GT_HEIGHT] + [PRED_HEIGHT] * num_behaviors
+    GT_HEIGHT = 3
+    PROB_HEIGHT = 2
+    PRED_HEIGHT = 1
+
+    height_ratios = (
+        [GT_HEIGHT, PROB_HEIGHT]
+        + [PRED_HEIGHT] * num_behaviors
+    )
 
     fig_w = max(14.0, duration / 8.0 + 2.0)
     fig_h = max(5.0, (GT_HEIGHT + num_behaviors * PRED_HEIGHT) * 0.55 + 1.5)
 
     fig, axes = plt.subplots(
-        num_behaviors + 1, 1,
+        num_behaviors + 2, 1,
         figsize=(fig_w, fig_h),
         gridspec_kw=dict(
             height_ratios=height_ratios,
@@ -547,8 +609,9 @@ def visualize_matrix(
             top=0.88, bottom=0.08, left=0.09, right=0.97,
         ),
     )
-    ax_gt   = axes[0]
-    ax_pred = axes[1:]
+    ax_gt = axes[0]
+    ax_prob = axes[1]
+    ax_pred = axes[2:]
 
     # ── 6. Axis styling helper ────────────────────────────────────────────────
     # X-axis data coordinates are 0-based (window-relative).
@@ -589,6 +652,39 @@ def visualize_matrix(
             ax.set_facecolor((r, g, b, 0.06))
         else:
             ax.set_facecolor("#f5f5f5")
+    
+    def _style_prob_ax(ax):
+        ax.set_xlim(0.0, duration)
+        ax.set_ylim(0.0, 1.0)
+
+        ax.set_ylabel(
+            "Probabilities",
+            rotation=0,
+            ha="right",
+            va="center",
+            labelpad=6,
+            fontsize=9,
+            fontweight="bold",
+        )
+
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+        ax.tick_params(bottom=False, labelbottom=False)
+
+        ax.set_yticks([0.0, 0.5, 1.0])
+        ax.set_yticklabels(["0", "0.5", "1"])
+
+        grid_step = (
+            30.0 if duration > 200
+            else 20.0 if duration > 80
+            else 10.0
+        )
+
+        for xs in np.arange(grid_step, duration, grid_step):
+            ax.axvline(xs, color="#e0e0e0", lw=0.6, zorder=0)
+
+        ax.axhline(threshold, color="black", ls="--", lw=0.75)
 
     # ── 7. Ground-truth row ───────────────────────────────────────────────────
     _style_ax(ax_gt, is_bottom=False, label="Ground\nTruth")
@@ -616,6 +712,35 @@ def visualize_matrix(
             zorder=7,
         )
 
+    _style_prob_ax(ax_prob)
+
+    clip_centers = (clip_starts + clip_ends) / 2
+
+    for label, color, probs in zip(labels, colors, pred_matrix):
+
+        ax_prob.plot(
+            clip_centers,
+            probs,
+            color=color,
+            lw=1.5,
+            label=label,
+        )
+    
+    ax_prob.axhline(
+        y=threshold,
+        color="red",
+        linestyle=":",
+        linewidth=1.5,
+        alpha=0.8,
+        label=f"Threshold ({threshold:.2f})",
+    )
+    
+    # ax_prob.legend(
+    #     fontsize=7,
+    #     ncol=min(3, num_behaviors),
+    #     loc="upper right",
+    # )
+    
     # ── 8. Prediction rows ────────────────────────────────────────────────────
     for i, (label, color) in enumerate(zip(labels, colors)):
         ax      = ax_pred[i]
