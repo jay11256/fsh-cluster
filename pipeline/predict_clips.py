@@ -10,12 +10,12 @@ import torch
 import numpy as np
 
 #Data
-DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/clips"
-DATA_CSV_PATH = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/55None_demosrun/predict_clips.csv" #Leave none unless csv made in advance
+DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping2/clips"
+DATA_CSV_PATH = None #Leave none unless csv made in advance
 #Points
 POINT_INFO_ENABLE = False
 TROKENS_PT_DATA = (
-    "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping/10mindemo_srun/pkls"
+    "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping2/pkls"
 )
 NUM_POINTS_TO_SAMPLE = 256
 #Model
@@ -23,7 +23,7 @@ CHECKPOINT_FILE = (
     "/fs/vulcan-projects/fsh_track/models/ds6/5_way-5_shot-none-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/pipeline_testing"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/demo"
 
 #Dont need changing
 TORCH_HOME = (
@@ -111,22 +111,23 @@ def main():
 
     # result = subprocess.run(cmd, check=False)
 
-    preds = torch.from_numpy(np.load(os.path.join(output_dir,'preds.npy')))
+    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/all_behaviors1/preds.npy"))
 
-    preds = torch.softmax(preds, dim=1)
+    # preds = torch.softmax(preds, dim=1)
     # one_hot = torch.zeros_like(preds)
     # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
+    # preds = torch.sigmoid(preds)
     print(preds)
 
     from visualize_matrix import visualize_matrix
     visualize_matrix(
-        ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/charmander_gt.tsv",
+        ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/all_behaviors.tsv",
         pred_matrix=preds.T,
-        threshold=0.16,
+        threshold=0.96,
         window_len=4,
         overlap_len=2,
-        video_window=(500, 1100),
-        save_path=os.path.join(output_dir, "softmax_16.png"),
+        video_window=(850, 1230),
+        save_path=os.path.join(output_dir, "sigmoid_96.png"),
     )
     # sys.exit(result.returncode)
 
