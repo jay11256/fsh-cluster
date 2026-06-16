@@ -234,6 +234,7 @@ def compute_detection_report(
     clip_starts,
     clip_ends,
     threshold=0.5,
+    thresholds=None,
     iou_thresholds=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
     gt_duration=4.0,
     eval_start=0.0,
@@ -241,6 +242,10 @@ def compute_detection_report(
 ):
     """
     Compute temporal mAP plus per-class clip precision/recall.
+
+    thresholds : list[float] | None
+        Per-class decision thresholds (one per row of pred_matrix).
+        When provided and non-empty, overrides the scalar ``threshold``.
     """
     gt_times = _as_numpy_array(gt_times)
     gt_behaviors = _as_numpy_array(gt_behaviors)
@@ -249,6 +254,18 @@ def compute_detection_report(
     clip_ends = _as_numpy_array(clip_ends)
     eval_start = float(eval_start)
     eval_end = float(eval_end) if eval_end is not None else None
+
+    # Resolve per-class threshold array.
+    num_behaviors = pred_matrix.shape[0]
+    if thresholds is not None and len(thresholds) > 0:
+        if len(thresholds) != num_behaviors:
+            raise ValueError(
+                f"thresholds has {len(thresholds)} entries but pred_matrix "
+                f"has {num_behaviors} rows."
+            )
+        thresh_per_class = list(thresholds)
+    else:
+        thresh_per_class = [threshold] * num_behaviors
 
     pred_matrix, clip_starts, clip_ends = _clip_eval_inputs(
         pred_matrix=pred_matrix,
@@ -265,6 +282,8 @@ def compute_detection_report(
     class_metrics = {}
 
     for behavior_idx, label in enumerate(labels):
+        thr = thresh_per_class[behavior_idx]
+
         gt_spans = _make_gt_spans(
             gt_times=gt_times,
             gt_behaviors=gt_behaviors,
@@ -275,10 +294,10 @@ def compute_detection_report(
         )
         n_gt = len(gt_spans)
         scores = pred_matrix[behavior_idx]
-        pred_spans = _build_pred_spans(scores, clip_starts, clip_ends, threshold)
+        pred_spans = _build_pred_spans(scores, clip_starts, clip_ends, thr)
 
         gt_clip_mask = _clip_ground_truth_mask(gt_spans, clip_starts, clip_ends)
-        pred_clip_mask = scores >= threshold
+        pred_clip_mask = scores >= thr
 
         clip_tp = int(np.sum(pred_clip_mask & gt_clip_mask))
         clip_fp = int(np.sum(pred_clip_mask & ~gt_clip_mask))
@@ -298,7 +317,6 @@ def compute_detection_report(
             recalls = tp_cum / n_gt
             precisions = tp_cum / np.maximum(tp_cum + fp_cum, 1e-8)
 
-            
             ap = _compute_ap(recalls, precisions)
 
             per_iou_ap[iou_thresh] = ap
@@ -327,6 +345,7 @@ def compute_detection_report(
             "recall": _safe_divide(clip_tp, clip_tp + clip_fn),
             "f1": f1,
             "ap_by_iou": per_iou_ap,
+            "threshold": thr,
         }
 
     return {
@@ -335,7 +354,6 @@ def compute_detection_report(
             for iou, vals in aps_by_iou.items()
         },
         "class_metrics": class_metrics,
-        
     }
 
 
@@ -347,6 +365,7 @@ def compute_map(
     clip_starts,
     clip_ends,
     threshold=0.5,
+    thresholds=None,
     iou_thresholds=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
     gt_duration=4.0,
     eval_start=0.0,
@@ -361,6 +380,7 @@ def compute_map(
         clip_starts=clip_starts,
         clip_ends=clip_ends,
         threshold=threshold,
+        thresholds=thresholds,
         iou_thresholds=iou_thresholds,
         gt_duration=gt_duration,
         eval_start=eval_start,
@@ -380,9 +400,10 @@ def _print_detection_report(report, labels):
         print(f"mAP@IoU={iou:.2f}: {_format_metric(value)}")
 
     print("\nPer-class clip metrics:")
-    print("-" * 110)
+    print("-" * 120)
     header = (
         f"{'Class':<15}"
+        f"{'Threshold':>10}"
         f"{'GT ev':>6}"
         f"{'Pred ev':>8}"
         f"{'Eval clips':>11}"
@@ -402,6 +423,7 @@ def _print_detection_report(report, labels):
         metrics = report["class_metrics"][label]
         print(
             f"{label:<15}"
+            f"{metrics['threshold']:>10.4f}"
             f"{metrics['num_gt_events']:>6}"
             f"{metrics['num_pred_events']:>8}"
             f"{metrics['num_eval_clips']:>11}"
@@ -419,7 +441,6 @@ def _print_detection_report(report, labels):
     f1s = []
 
     for label in labels:
-
         metrics = report["class_metrics"][label]
 
         if not np.isnan(metrics["precision"]):
@@ -435,6 +456,7 @@ def _print_detection_report(report, labels):
 
     print(
         f"{'Mean':<15}"
+        f"{'':>10}"
         f"{'':>6}"
         f"{'':>8}"
         f"{'':>11}"
@@ -447,7 +469,7 @@ def _print_detection_report(report, labels):
         f"{_format_metric(np.mean(recalls)):>11}"
         f"{_format_metric(np.mean(f1s)):>11}"
     )
-    
+
 
 def _load_ground_truth(path: str, video_window: tuple):
     """
@@ -490,12 +512,14 @@ def _load_ground_truth(path: str, video_window: tuple):
 def visualize_matrix(
     ground_truth_path: str,
     pred_matrix: np.ndarray,
-    threshold: float,
+    threshold: float = 0.5,
+    thresholds: Optional[List[float]] = None,
     window_len: float = 8.0,
     overlap_len: float = 4.0,
     behavior_names: Optional[List[str]] = None,
     save_path: Optional[str] = None,
     video_window: Optional[Tuple[float, float]] = None,
+    **kwargs,                         # absorb unknown keyword args gracefully
 ) -> "plt.Figure":
     """
     Visualise model predictions against ground truth on a per-behavior timeline.
@@ -503,6 +527,7 @@ def visualize_matrix(
     Layout
     ------
     - Top row    : all ground-truth events as colour-coded vertical ticks.
+    - Second row : per-class score curves with threshold line(s).
     - Lower rows : one row per behavior — solid spans where the model fires.
 
     Parameters
@@ -510,10 +535,12 @@ def visualize_matrix(
     ground_truth_path : str
         TSV with 'Time' (seconds) and 'Behavior type' columns.
     pred_matrix : np.ndarray  (num_behaviors, num_clips)
-        Raw logit / probability scores.  Clip j is predicted positive for
-        behavior i when pred_matrix[i, j] >= threshold.
+        Raw logit / probability scores.
     threshold : float
-        Decision threshold.
+        Scalar decision threshold used when ``thresholds`` is empty/None.
+    thresholds : list[float] | None
+        Per-class decision thresholds (one entry per behavior row).
+        When provided and non-empty, overrides ``threshold`` for every class.
     window_len : float
         Clip duration in seconds (default 8).
     overlap_len : float
@@ -523,9 +550,9 @@ def visualize_matrix(
     save_path : str | None
         If given, save the figure here (PNG / PDF / SVG).
     video_window : tuple[float, float] | None
-        (start, end) recording time in seconds.  GT events outside this range
-        are ignored and x-axis labels are offset by start so they read as
-        recording time.  Defaults to the module-level VIDEO_WINDOW global.
+        (start, end) recording time in seconds.
+    **kwargs
+        Extra keyword arguments are silently ignored (e.g. legacy params).
 
     Returns
     -------
@@ -556,15 +583,30 @@ def visualize_matrix(
                 f"has {num_behaviors} rows.  Pass behavior_names= explicitly."
             )
 
-    # ── 3. Clip timeline (0-based, window-relative) ───────────────────────────
+    # ── 3. Resolve per-class thresholds ──────────────────────────────────────
+    if thresholds is not None and len(thresholds) > 0:
+        if len(thresholds) != num_behaviors:
+            raise ValueError(
+                f"thresholds has {len(thresholds)} entries but pred_matrix "
+                f"has {num_behaviors} rows."
+            )
+        thresh_per_class = list(thresholds)
+    else:
+        thresh_per_class = [threshold] * num_behaviors
+
+    # ── 4. Clip timeline (0-based, window-relative) ───────────────────────────
     stride      = window_len - overlap_len
     clip_starts = np.arange(num_clips) * stride
     clip_ends   = clip_starts + window_len
     if _window is not None and np.isfinite(_window[1]):
         duration = float(_window[1] - _window[0])
     else:
-        duration = float(clip_ends[-1])          # total span in seconds
-    pred_binary = pred_matrix >= threshold       # (num_behaviors, num_clips)
+        duration = float(clip_ends[-1])
+
+    # Build binary mask using per-class thresholds: shape (num_behaviors, num_clips)
+    pred_binary = np.stack(
+        [pred_matrix[i] >= thresh_per_class[i] for i in range(num_behaviors)]
+    )
 
     detection_report = compute_detection_report(
         gt_times=gt_times,
@@ -573,29 +615,27 @@ def visualize_matrix(
         labels=labels,
         clip_starts=clip_starts,
         clip_ends=clip_ends,
-        threshold=threshold,
+        threshold=threshold,          # scalar fallback (ignored when thresholds used)
+        thresholds=thresh_per_class,  # always pass resolved list
         iou_thresholds=(.1, .2, .3, .4, .5, .6, .7, .8, .9),
         gt_duration=window_len,
         eval_start=0.0,
         eval_end=duration,
     )
 
-    # ── 4. Colour palette ─────────────────────────────────────────────────────
+    # ── 5. Colour palette ─────────────────────────────────────────────────────
     try:
         cmap = matplotlib.colormaps.get_cmap("tab10")
     except AttributeError:
         cmap = plt.cm.get_cmap("tab10")
     colors = [cmap(i % 10) for i in range(num_behaviors)]
 
-    # ── 5. Figure layout ──────────────────────────────────────────────────────
-    GT_HEIGHT = 3
+    # ── 6. Figure layout ──────────────────────────────────────────────────────
+    GT_HEIGHT   = 3
     PROB_HEIGHT = 2
     PRED_HEIGHT = 1
 
-    height_ratios = (
-        [GT_HEIGHT, PROB_HEIGHT]
-        + [PRED_HEIGHT] * num_behaviors
-    )
+    height_ratios = [GT_HEIGHT, PROB_HEIGHT] + [PRED_HEIGHT] * num_behaviors
 
     fig_w = max(14.0, duration / 8.0 + 2.0)
     fig_h = max(5.0, (GT_HEIGHT + num_behaviors * PRED_HEIGHT) * 0.55 + 1.5)
@@ -609,13 +649,11 @@ def visualize_matrix(
             top=0.88, bottom=0.08, left=0.09, right=0.97,
         ),
     )
-    ax_gt = axes[0]
+    ax_gt   = axes[0]
     ax_prob = axes[1]
     ax_pred = axes[2:]
 
-    # ── 6. Axis styling helper ────────────────────────────────────────────────
-    # X-axis data coordinates are 0-based (window-relative).
-    # Tick labels are offset by VIDEO_WINDOW[0] so they show recording time.
+    # ── 7. Axis styling helper ────────────────────────────────────────────────
     display_offset = _window[0]
 
     def _style_ax(ax, is_bottom: bool, label: str, color=None):
@@ -652,7 +690,7 @@ def visualize_matrix(
             ax.set_facecolor((r, g, b, 0.06))
         else:
             ax.set_facecolor("#f5f5f5")
-    
+
     def _style_prob_ax(ax):
         ax.set_xlim(0.0, duration)
         ax.set_ylim(0.0, 1.0)
@@ -684,9 +722,7 @@ def visualize_matrix(
         for xs in np.arange(grid_step, duration, grid_step):
             ax.axvline(xs, color="#e0e0e0", lw=0.6, zorder=0)
 
-        ax.axhline(threshold, color="black", ls="--", lw=0.75)
-
-    # ── 7. Ground-truth row ───────────────────────────────────────────────────
+    # ── 8. Ground-truth row ───────────────────────────────────────────────────
     _style_ax(ax_gt, is_bottom=False, label="Ground\nTruth")
 
     TICK_YMIN, TICK_YMAX = 0.05, 0.55
@@ -698,8 +734,6 @@ def visualize_matrix(
         ax_gt.scatter([t], [TICK_YMAX], s=18, color=c, marker="v",
                       zorder=6, clip_on=False)
 
-        # Blended transform: x tracks data position, y stays inside the axes
-        # so bbox_inches="tight" doesn't balloon the figure width.
         blended = mtransforms.blended_transform_factory(
             ax_gt.transData, ax_gt.transAxes
         )
@@ -712,40 +746,46 @@ def visualize_matrix(
             zorder=7,
         )
 
+    # ── 9. Probability curves row ─────────────────────────────────────────────
     _style_prob_ax(ax_prob)
 
     clip_centers = (clip_starts + clip_ends) / 2
 
     for label, color, probs in zip(labels, colors, pred_matrix):
+        ax_prob.plot(clip_centers, probs, color=color, lw=1.5, label=label)
 
-        ax_prob.plot(
-            clip_centers,
-            probs,
-            color=color,
-            lw=1.5,
-            label=label,
+    # Draw one threshold line per unique threshold value.
+    unique_thresholds = sorted(set(thresh_per_class))
+    for thr_val in unique_thresholds:
+        # Collect which class names share this threshold for the label.
+        names = [
+            labels[i] for i, t in enumerate(thresh_per_class) if t == thr_val
+        ]
+        line_label = (
+            f"Threshold ({thr_val:.2f})"
+            if len(names) == num_behaviors
+            else f"Threshold ({thr_val:.2f}) – {', '.join(names)}"
         )
-    
-    ax_prob.axhline(
-        y=threshold,
-        color="red",
-        linestyle=":",
-        linewidth=1.5,
-        alpha=0.8,
-        label=f"Threshold ({threshold:.2f})",
-    )
-    
-    # ax_prob.legend(
-    #     fontsize=7,
-    #     ncol=min(3, num_behaviors),
-    #     loc="upper right",
-    # )
-    
-    # ── 8. Prediction rows ────────────────────────────────────────────────────
+        ax_prob.axhline(
+            y=thr_val,
+            color="red",
+            linestyle=":",
+            linewidth=1.5,
+            alpha=0.8,
+            label=line_label,
+        )
+
+    # ── 10. Prediction rows ───────────────────────────────────────────────────
     for i, (label, color) in enumerate(zip(labels, colors)):
         ax      = ax_pred[i]
         is_last = i == num_behaviors - 1
         _style_ax(ax, is_bottom=is_last, label=label, color=color)
+
+        # Draw per-class threshold as a subtle dotted line in the score row.
+        ax.axhline(
+            thresh_per_class[i],
+            color=color, ls=":", lw=0.8, alpha=0.5, zorder=1,
+        )
 
         pos_clips = np.where(pred_binary[i])[0]
         if len(pos_clips):
@@ -756,23 +796,42 @@ def visualize_matrix(
                 ax.axvspan(x0, x1, ymin=0.1, ymax=0.9,
                            facecolor=color, alpha=0.85, zorder=2, lw=0)
 
-    # ── 9. Legend ─────────────────────────────────────────────────────────────
+    # ── 11. Legend ────────────────────────────────────────────────────────────
+    # Build threshold legend entries.
+    thresh_handles = []
+    for thr_val in unique_thresholds:
+        names = [labels[i] for i, t in enumerate(thresh_per_class) if t == thr_val]
+        lbl = (
+            f"Threshold = {thr_val:.2f}"
+            if len(names) == num_behaviors
+            else f"Threshold = {thr_val:.2f} ({', '.join(names)})"
+        )
+        thresh_handles.append(
+            Line2D([0], [0], color="red", ls=":", lw=1.5, alpha=0.8, label=lbl)
+        )
+
     fig.legend(
         handles=[
             mpatches.Patch(facecolor="#888888", alpha=0.85,
-                           label=f"Predicted positive (threshold = {threshold})"),
+                           label="Predicted positive"),
             Line2D([0], [0], color="#555555", lw=1.8, marker="v", markersize=5,
                    label="Ground-truth event"),
+            *thresh_handles,
         ],
         loc="upper right", bbox_to_anchor=(0.97, 0.975),
         fontsize=8, framealpha=0.9, edgecolor="#cccccc",
     )
 
-    # ── 10. Title ─────────────────────────────────────────────────────────────
+    # ── 12. Title ─────────────────────────────────────────────────────────────
+    using_per_class = thresholds is not None and len(thresholds) > 0
+    thresh_str = (
+        "per-class thresholds"
+        if using_per_class
+        else f"threshold = {threshold}"
+    )
     fig.suptitle(
         f"Behavior detections vs ground truth"
-        f"  |  window = {window_len} s,  overlap = {overlap_len} s,"
-        f"  threshold = {threshold}",
+        f"  |  window = {window_len} s,  overlap = {overlap_len} s,  {thresh_str}",
         fontsize=10, y=0.93,
     )
 
@@ -809,10 +868,12 @@ if __name__ == "__main__":
 
     out_path = "/mnt/user-data/outputs/demo_visualization.png"
     try:
+        # Demo with per-class thresholds
         visualize_matrix(
             ground_truth_path=gt_path,
             pred_matrix=logits,
-            threshold=0.5,
+            threshold=0.5,                         # fallback (not used here)
+            thresholds=[0.4, 0.5, 0.6],            # per-class override
             window_len=8,
             overlap_len=4,
             behavior_names=["Feeding", "Grooming", "Resting"],

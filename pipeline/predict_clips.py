@@ -23,7 +23,7 @@ CHECKPOINT_FILE = (
     "/fs/vulcan-projects/fsh_track/models/ds6/5_way-5_shot-none-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/demo"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/pipeline_testing/"
 
 #Dont need changing
 TORCH_HOME = (
@@ -113,21 +113,24 @@ def main():
 
     preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/all_behaviors1/preds.npy"))
 
-    # preds = torch.softmax(preds, dim=1)
-    # one_hot = torch.zeros_like(preds)
-    # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
-    # preds = torch.sigmoid(preds)
+    preds = torch.softmax(preds, dim=1) #softmax
+    # one_hot = torch.zeros_like(preds) #max
+    # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1) #max
+    # preds = torch.sigmoid(preds) #sigmoid
     print(preds)
 
+
+    #DEFAULT_LABELS = ["Bite", "Lead", "Peck", "Quiver", "Run/Flee", "Tilt"]
     from visualize_matrix import visualize_matrix
     visualize_matrix(
         ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/all_behaviors.tsv",
         pred_matrix=preds.T,
-        threshold=0.96,
+        threshold=.95,
+        thresholds=[.1,.2,.3,.4,.5,.6],
         window_len=4,
         overlap_len=2,
         video_window=(850, 1230),
-        save_path=os.path.join(output_dir, "sigmoid_96.png"),
+        save_path=os.path.join(output_dir, "softmax_80.png"),
     )
     # sys.exit(result.returncode)
 
