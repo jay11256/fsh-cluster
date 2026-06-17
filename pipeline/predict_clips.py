@@ -13,17 +13,17 @@ import numpy as np
 DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping2/clips"
 DATA_CSV_PATH = None #Leave none unless csv made in advance
 #Points
-POINT_INFO_ENABLE = False
+POINT_INFO_ENABLE = True
 TROKENS_PT_DATA = (
     "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping2/pkls"
 )
-NUM_POINTS_TO_SAMPLE = 256
+NUM_POINTS_TO_SAMPLE = 18
 #Model
 CHECKPOINT_FILE = (
-    "/fs/vulcan-projects/fsh_track/models/ds6/5_way-5_shot-none-both/checkpoints/checkpoint_best.pyth"
+    "/fs/vulcan-projects/fsh_track/models/ds6_BCEL/BCEL-5_way-1_shot-sam3-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/pipeline_testing/"
+BASE_OUTPUT_DIR = "jason/pipeline_testing"
 
 #Dont need changing
 TORCH_HOME = (
@@ -109,14 +109,14 @@ def main():
         "TEST.CHECKPOINT_FILE_PATH", CHECKPOINT_FILE,
     ]
 
-    # result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False)
 
-    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/all_behaviors1/preds.npy"))
+    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/jason/pipeline_testing/sweep4/preds.npy"))
 
-    preds = torch.softmax(preds, dim=1) #softmax
-    # one_hot = torch.zeros_like(preds) #max
-    # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1) #max
-    # preds = torch.sigmoid(preds) #sigmoid
+    # preds = torch.softmax(preds, dim=1)
+    # one_hot = torch.zeros_like(preds)
+    # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
+    preds = torch.sigmoid(preds)
     print(preds)
 
 
