@@ -13,10 +13,12 @@ Usage
         threshold=0.5,
         window_len=8,
         overlap_len=4,
+        save_path="output_dir",      # saves visualize_predictions.png + metrics
     )
-    fig.savefig("output.png", bbox_inches="tight", dpi=150)
 """
 
+import os
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -393,14 +395,17 @@ def _format_metric(value):
     return "nan" if np.isnan(value) else f"{value:.4f}"
 
 
-def _print_detection_report(report, labels):
-    print("\nmAP@IoU results:")
-    print("-" * 40)
-    for iou, value in report["map_by_iou"].items():
-        print(f"mAP@IoU={iou:.2f}: {_format_metric(value)}")
+def _format_detection_report(report, labels):
+    lines = []
 
-    print("\nPer-class clip metrics:")
-    print("-" * 120)
+    lines.append("mAP@IoU results:")
+    lines.append("-" * 40)
+    for iou, value in report["map_by_iou"].items():
+        lines.append(f"mAP@IoU={iou:.2f}: {_format_metric(value)}")
+
+    lines.append("")
+    lines.append("Per-class clip metrics:")
+    lines.append("-" * 120)
     header = (
         f"{'Class':<15}"
         f"{'Threshold':>10}"
@@ -416,12 +421,12 @@ def _print_detection_report(report, labels):
         f"{'Recall':>11}"
         f"{'F1':>11}"
     )
-    print(header)
-    print("-" * len(header))
+    lines.append(header)
+    lines.append("-" * len(header))
 
     for label in labels:
         metrics = report["class_metrics"][label]
-        print(
+        lines.append(
             f"{label:<15}"
             f"{metrics['threshold']:>10.4f}"
             f"{metrics['num_gt_events']:>6}"
@@ -452,9 +457,9 @@ def _print_detection_report(report, labels):
         if not np.isnan(metrics["f1"]):
             f1s.append(metrics["f1"])
 
-    print("-" * len(header))
+    lines.append("-" * len(header))
 
-    print(
+    lines.append(
         f"{'Mean':<15}"
         f"{'':>10}"
         f"{'':>6}"
@@ -469,6 +474,8 @@ def _print_detection_report(report, labels):
         f"{_format_metric(np.mean(recalls)):>11}"
         f"{_format_metric(np.mean(f1s)):>11}"
     )
+
+    return "\n".join(lines) + "\n"
 
 
 def _load_ground_truth(path: str, video_window: tuple):
@@ -505,6 +512,108 @@ def _load_ground_truth(path: str, video_window: tuple):
         [BEHAVIOR_MAP.get(b.lower(), b) for b in raw], dtype=str
     )
     return times, behaviors
+
+
+def _build_preds_debug_figure(
+    gt_times,
+    gt_behaviors,
+    labels,
+    colors,
+    pred_matrix,
+    clip_centers,
+    duration,
+    display_offset,
+    window_len,
+    overlap_len,
+):
+    """Single-panel figure: score curves with ground-truth events overlaid."""
+    fig_w = max(14.0, duration / 8.0 + 2.0)
+    fig, ax = plt.subplots(
+        1, 1,
+        figsize=(fig_w, 4.5),
+        gridspec_kw=dict(top=0.88, bottom=0.12, left=0.09, right=0.97),
+    )
+
+    ax.set_xlim(0.0, duration)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_ylabel("Score", fontsize=9, fontweight="bold")
+    ax.set_xlabel("Time (s)", fontsize=9, labelpad=4)
+    ax.set_yticks([0.0, 0.5, 1.0])
+    ax.set_yticklabels(["0", "0.5", "1"])
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(labelsize=8)
+    ax.xaxis.set_major_locator(mticker.MultipleLocator(10))
+    ax.xaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda x, _: f"{x + display_offset:.4g}")
+    )
+
+    grid_step = 30.0 if duration > 200 else 20.0 if duration > 80 else 10.0
+    for xs in np.arange(grid_step, duration, grid_step):
+        ax.axvline(xs, color="#e0e0e0", lw=0.6, zorder=0)
+
+    for label, color, probs in zip(labels, colors, pred_matrix):
+        ax.plot(clip_centers, probs, color=color, lw=1.5, label=label)
+
+    tick_ymin, tick_ymax = 0.88, 0.98
+    events_by_time = defaultdict(list)
+    for t, beh in zip(gt_times, gt_behaviors):
+        events_by_time[float(t)].append(beh)
+
+    x_step = min(0.35, max(0.12, duration * 0.008))
+    label_y_step = 0.055
+
+    for t, behs in sorted(events_by_time.items()):
+        n = len(behs)
+        if n == 1:
+            x_offsets = [0.0]
+        else:
+            x_offsets = [
+                (i - (n - 1) / 2) * x_step
+                for i in range(n)
+            ]
+
+        for i, (beh, x_off) in enumerate(zip(behs, x_offsets)):
+            t_draw = t + x_off
+            c = colors[labels.index(beh)] if beh in labels else "#777777"
+            ax.vlines(t_draw, tick_ymin, tick_ymax, colors=c, lw=1.8, zorder=5)
+            ax.scatter(
+                [t_draw], [tick_ymax], s=18, color=c, marker="v",
+                zorder=6, clip_on=False,
+            )
+            blended = mtransforms.blended_transform_factory(
+                ax.transData, ax.transAxes
+            )
+            label_y = tick_ymax + 0.04 + (i * label_y_step if n > 1 else 0.0)
+            ax.text(
+                t_draw, label_y, beh,
+                transform=blended,
+                ha="center", va="bottom",
+                fontsize=6.5, color=c,
+                rotation=90, clip_on=True,
+                zorder=7,
+            )
+
+    gt_handle = Line2D(
+        [0], [0], color="#555555", lw=1.8, marker="v", markersize=5,
+        label="Ground-truth event",
+    )
+    curve_handles, curve_labels = ax.get_legend_handles_labels()
+    ax.legend(
+        handles=curve_handles + [gt_handle],
+        labels=curve_labels + [gt_handle.get_label()],
+        loc="upper right",
+        fontsize=8,
+        framealpha=0.9,
+        edgecolor="#cccccc",
+    )
+
+    fig.suptitle(
+        f"Behavior scores vs ground truth"
+        f"  |  window = {window_len} s,  overlap = {overlap_len} s",
+        fontsize=10, y=0.96,
+    )
+    return fig
 
 
 # ── Main function ─────────────────────────────────────────────────────────────
@@ -548,7 +657,9 @@ def visualize_matrix(
     behavior_names : list[str] | None
         Row-index → behavior name mapping.  Defaults to DEFAULT_LABELS.
     save_path : str | None
-        If given, save the figure here (PNG / PDF / SVG).
+        Output directory. When given, saves ``visualize_predictions.png``,
+        ``preds_debug.png``, and a ``metrics`` text file with detection-report
+        statistics.
     video_window : tuple[float, float] | None
         (start, end) recording time in seconds.
     **kwargs
@@ -593,6 +704,8 @@ def visualize_matrix(
         thresh_per_class = list(thresholds)
     else:
         thresh_per_class = [threshold] * num_behaviors
+
+    using_per_class = thresholds is not None and len(thresholds) > 0
 
     # ── 4. Clip timeline (0-based, window-relative) ───────────────────────────
     stride      = window_len - overlap_len
@@ -754,26 +867,28 @@ def visualize_matrix(
     for label, color, probs in zip(labels, colors, pred_matrix):
         ax_prob.plot(clip_centers, probs, color=color, lw=1.5, label=label)
 
-    # Draw one threshold line per unique threshold value.
+    # Draw threshold line(s): per-class color when thresholds differ by class.
     unique_thresholds = sorted(set(thresh_per_class))
-    for thr_val in unique_thresholds:
-        # Collect which class names share this threshold for the label.
-        names = [
-            labels[i] for i, t in enumerate(thresh_per_class) if t == thr_val
-        ]
-        line_label = (
-            f"Threshold ({thr_val:.2f})"
-            if len(names) == num_behaviors
-            else f"Threshold ({thr_val:.2f}) – {', '.join(names)}"
-        )
-        ax_prob.axhline(
-            y=thr_val,
-            color="red",
-            linestyle=":",
-            linewidth=1.5,
-            alpha=0.8,
-            label=line_label,
-        )
+    if using_per_class:
+        for label, color, thr_val in zip(labels, colors, thresh_per_class):
+            ax_prob.axhline(
+                y=thr_val,
+                color=color,
+                linestyle=":",
+                linewidth=1.5,
+                alpha=0.45,
+                label=f"Threshold ({thr_val:.2f}) – {label}",
+            )
+    else:
+        for thr_val in unique_thresholds:
+            ax_prob.axhline(
+                y=thr_val,
+                color="red",
+                linestyle=":",
+                linewidth=1.5,
+                alpha=0.8,
+                label=f"Threshold ({thr_val:.2f})",
+            )
 
     # ── 10. Prediction rows ───────────────────────────────────────────────────
     for i, (label, color) in enumerate(zip(labels, colors)):
@@ -781,11 +896,11 @@ def visualize_matrix(
         is_last = i == num_behaviors - 1
         _style_ax(ax, is_bottom=is_last, label=label, color=color)
 
-        # Draw per-class threshold as a subtle dotted line in the score row.
-        ax.axhline(
-            thresh_per_class[i],
-            color=color, ls=":", lw=0.8, alpha=0.5, zorder=1,
-        )
+        if not using_per_class:
+            ax.axhline(
+                thresh_per_class[i],
+                color=color, ls=":", lw=0.8, alpha=0.5, zorder=1,
+            )
 
         pos_clips = np.where(pred_binary[i])[0]
         if len(pos_clips):
@@ -799,16 +914,22 @@ def visualize_matrix(
     # ── 11. Legend ────────────────────────────────────────────────────────────
     # Build threshold legend entries.
     thresh_handles = []
-    for thr_val in unique_thresholds:
-        names = [labels[i] for i, t in enumerate(thresh_per_class) if t == thr_val]
-        lbl = (
-            f"Threshold = {thr_val:.2f}"
-            if len(names) == num_behaviors
-            else f"Threshold = {thr_val:.2f} ({', '.join(names)})"
-        )
-        thresh_handles.append(
-            Line2D([0], [0], color="red", ls=":", lw=1.5, alpha=0.8, label=lbl)
-        )
+    if using_per_class:
+        for label, color, thr_val in zip(labels, colors, thresh_per_class):
+            thresh_handles.append(
+                Line2D(
+                    [0], [0], color=color, ls=":", lw=1.5, alpha=0.45,
+                    label=f"Threshold = {thr_val:.2f} ({label})",
+                )
+            )
+    else:
+        for thr_val in unique_thresholds:
+            thresh_handles.append(
+                Line2D(
+                    [0], [0], color="red", ls=":", lw=1.5, alpha=0.8,
+                    label=f"Threshold = {thr_val:.2f}",
+                )
+            )
 
     fig.legend(
         handles=[
@@ -823,7 +944,6 @@ def visualize_matrix(
     )
 
     # ── 12. Title ─────────────────────────────────────────────────────────────
-    using_per_class = thresholds is not None and len(thresholds) > 0
     thresh_str = (
         "per-class thresholds"
         if using_per_class
@@ -836,16 +956,37 @@ def visualize_matrix(
     )
 
     if save_path is not None:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        os.makedirs(save_path, exist_ok=True)
+        fig_path = os.path.join(save_path, "visualize_predictions.png")
+        debug_path = os.path.join(save_path, "preds_debug.png")
+        metrics_path = os.path.join(save_path, "metrics")
+        fig.savefig(fig_path, dpi=400, bbox_inches="tight")
 
-    _print_detection_report(detection_report, labels)
+        debug_fig = _build_preds_debug_figure(
+            gt_times=gt_times,
+            gt_behaviors=gt_behaviors,
+            labels=labels,
+            colors=colors,
+            pred_matrix=pred_matrix,
+            clip_centers=clip_centers,
+            duration=duration,
+            display_offset=display_offset,
+            window_len=window_len,
+            overlap_len=overlap_len,
+        )
+        debug_fig.savefig(debug_path, dpi=400, bbox_inches="tight")
+        plt.close(debug_fig)
+
+        with open(metrics_path, "w", encoding="utf-8") as f:
+            f.write(_format_detection_report(detection_report, labels))
 
     return fig
 
 
 # ── Demo / smoke-test ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import tempfile, os
+    import shutil
+    import tempfile
 
     gt_tsv = (
         "Time\tBehavior type\n"
@@ -866,7 +1007,7 @@ if __name__ == "__main__":
     logits[1, [1, 2, 8]]      = 1.5   # Grooming
     logits[2, [9, 10]]        = 1.2   # Resting
 
-    out_path = "/mnt/user-data/outputs/demo_visualization.png"
+    out_dir = tempfile.mkdtemp()
     try:
         # Demo with per-class thresholds
         visualize_matrix(
@@ -877,8 +1018,9 @@ if __name__ == "__main__":
             window_len=8,
             overlap_len=4,
             behavior_names=["Feeding", "Grooming", "Resting"],
-            save_path=out_path,
+            save_path=out_dir,
         )
-        print(f"Demo saved → {out_path}")
+        print(f"Demo saved → {out_dir}")
     finally:
         os.unlink(gt_path)
+        shutil.rmtree(out_dir, ignore_errors=True)

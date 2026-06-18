@@ -23,7 +23,7 @@ CHECKPOINT_FILE = (
     "/fs/vulcan-projects/fsh_track/models/ds6_BCEL/BCEL-5_way-1_shot-sam3-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "jason/pipeline_testing"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/demo6"
 
 #Dont need changing
 TORCH_HOME = (
@@ -109,14 +109,14 @@ def main():
         "TEST.CHECKPOINT_FILE_PATH", CHECKPOINT_FILE,
     ]
 
-    result = subprocess.run(cmd, check=False)
+    # result = subprocess.run(cmd, check=False)
 
-    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/jason/pipeline_testing/sweep4/preds.npy"))
+    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/clipping3_preds/preds.npy"))
 
-    # preds = torch.softmax(preds, dim=1)
+    preds = torch.softmax(preds, dim=1)
     # one_hot = torch.zeros_like(preds)
     # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
-    preds = torch.sigmoid(preds)
+    # preds = torch.sigmoid(preds)
     print(preds)
 
 
@@ -130,7 +130,7 @@ def main():
         window_len=4,
         overlap_len=2,
         video_window=(850, 1230),
-        save_path=os.path.join(output_dir, "softmax_80.png"),
+        save_path=output_dir,
     )
     # sys.exit(result.returncode)
 
