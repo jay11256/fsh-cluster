@@ -478,28 +478,57 @@ def _format_detection_report(report, labels):
     return "\n".join(lines) + "\n"
 
 
+def _find_data_start(path: str) -> int:
+    """Return the row index of the real header line."""
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for i, line in enumerate(f):
+            if "Time" in line and "Behavior" in line:
+                return i
+    raise ValueError("Could not find a header row containing 'Time' and 'Behavior'.")
+
+
 def _load_ground_truth(path: str, video_window: tuple):
     """
-    Read a TSV with 'Time' and 'Behavior type' columns.
+    Read a CSV or TSV with 'Time' and 'Behavior'/'Behavior type' columns.
+    Handles BORIS-style TSV exports with metadata preamble rows.
     Filters to video_window, re-indexes times to 0 (window-relative),
     and applies BEHAVIOR_MAP.
     Returns (times_array, behaviors_array).
     """
     start, end = video_window
 
-    gt = pd.read_csv(path, sep="\t")
+    # Detect separator from extension, fall back to sniffing
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".csv":
+        sep = ","
+    elif ext in (".tsv", ".txt"):
+        sep = "\t"
+    else:
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            sample = f.read(2048)
+        sep = "\t" if sample.count("\t") > sample.count(",") else ","
+
+    # Skip metadata preamble if present (e.g. BORIS exports)
+    try:
+        header_row = _find_data_start(path)
+    except ValueError:
+        header_row = 0
+
+    gt = pd.read_csv(path, sep=sep, skiprows=header_row)
     gt.columns = gt.columns.str.strip()
 
     col_map  = {c.lower(): c for c in gt.columns}
     time_col = col_map.get("time") or next(
         (c for c in gt.columns if "time" in c.lower()), None
     )
-    beh_col  = col_map.get("behavior type") or next(
-        (c for c in gt.columns if "behavior" in c.lower()), None
+    beh_col  = (
+        col_map.get("behavior type")
+        or col_map.get("behavior")
+        or next((c for c in gt.columns if "behavior" in c.lower()), None)
     )
     if time_col is None or beh_col is None:
         raise ValueError(
-            f"Could not locate 'Time' and 'Behavior type' columns. "
+            f"Could not locate 'Time' and 'Behavior' columns. "
             f"Columns found: {list(gt.columns)}"
         )
 

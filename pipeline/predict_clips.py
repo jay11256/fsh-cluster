@@ -10,20 +10,20 @@ import torch
 import numpy as np
 
 #Data
-DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping2/clips"
+DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/data/60min_0522/clips"
 DATA_CSV_PATH = None #Leave none unless csv made in advance
 #Points
 POINT_INFO_ENABLE = True
 TROKENS_PT_DATA = (
-    "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/clipping2/pkls"
+    "/fs/vulcan-projects/fsh_track/bhargav/data/60min_0522/pkls"
 )
 NUM_POINTS_TO_SAMPLE = 18
 #Model
 CHECKPOINT_FILE = (
-    "/fs/vulcan-projects/fsh_track/models/ds6_BCEL/BCEL-5_way-1_shot-sam3-both/checkpoints/checkpoint_best.pyth"
+    "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-none-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/will_files/pipeline_tests/demo6"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/in_prog_preds/0522"
 
 #Dont need changing
 TORCH_HOME = (
@@ -109,27 +109,28 @@ def main():
         "TEST.CHECKPOINT_FILE_PATH", CHECKPOINT_FILE,
     ]
 
-    # result = subprocess.run(cmd, check=False)
+    #result = subprocess.run(cmd, check=False)
 
-    preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/clipping3_preds/preds.npy"))
+    preds = torch.from_numpy(np.load(os.path.join(output_dir, "preds.npy")))
+    #preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/clipping3_preds/preds.npy"))
 
-    preds = torch.softmax(preds, dim=1)
+    #preds = torch.softmax(preds, dim=1)
     # one_hot = torch.zeros_like(preds)
     # preds = one_hot.scatter_(1, preds.argmax(dim=1, keepdim=True), 1)
-    # preds = torch.sigmoid(preds)
+    preds = torch.sigmoid(preds)
     print(preds)
 
 
     #DEFAULT_LABELS = ["Bite", "Lead", "Peck", "Quiver", "Run/Flee", "Tilt"]
     from visualize_matrix import visualize_matrix
     visualize_matrix(
-        ground_truth_path = "/fs/vulcan-projects/fsh_track/jason/pipeline_testing/all_behaviors.tsv",
+        ground_truth_path = "/fs/vulcan-projects/fsh_track/raw_data/box/CirclingAssayPGF2a_NoseBlockVsShamVsCNG_202505-202509_CGP/2025-05-22_Pi14_TankA1-1_Run1_ShamNoseblockFemalePGF2a_Circling/BORISAnnotations.tsv",
         pred_matrix=preds.T,
         threshold=.95,
-        thresholds=[.1,.2,.3,.4,.5,.6],
+        thresholds= [0.91,0.93,0.74,0.97,0.83,0.85],
         window_len=4,
         overlap_len=2,
-        video_window=(850, 1230),
+        #video_window=(0, 2520),
         save_path=output_dir,
     )
     # sys.exit(result.returncode)
