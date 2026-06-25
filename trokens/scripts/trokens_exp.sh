@@ -1,14 +1,14 @@
 #!/bin/sh
-#SBATCH --job-name=get_preds_test
+#SBATCH --job-name=ds8
 #SBATCH --ntasks=4
-#SBATCH --gres=gpu:rtxa5000:1
+#SBATCH --gres=gpu:rtxa6000:1
 #SBATCH --qos=default
 #SBATCH --account=nexus
 #SBATCH --partition=tron
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/trokens_pointformer_%j.out
-#SBATCH --error=../trial_run_outputs/trokens_pointformer_%j.out
+#SBATCH --output=../trial_run_outputs/ds8_%j.out
+#SBATCH --error=../trial_run_outputs/ds8_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE 
@@ -47,7 +47,7 @@ case $PT_DATA in
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/pkls"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds8"
 		export NUM_POINTS_TO_SAMPLE=18
         ;;
 esac
@@ -60,11 +60,11 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=chase_exp
+export EXP_NAME=ds8
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/will/will_files/testing_logits/clips
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/will/scratch/new_csv1
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset8
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=6
 export FILTER_ONE=True
