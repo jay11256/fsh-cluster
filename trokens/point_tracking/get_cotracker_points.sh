@@ -11,8 +11,8 @@
 #SBATCH --error=job_%j.err
 
 source ~/miniconda3/bin/activate
-conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/trokens_env
-conda activate trokens
+conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/cotracker
+conda activate cotracker
 conda init
 
-python new_point_tracking.py --fps 10 --csv_path /fs/vulcan-projects/fsh_track/processed_data/dataset7/dataset7.csv --base_feat_path /fs/vulcan-projects/fsh_track/processed_data/sevensecscotrac
+python new_point_tracking.py --fps 10 --csv_path /fs/vulcan-projects/fsh_track/processed_data/dataset8/dataset8.csv --base_feat_path /fs/vulcan-projects/fsh_track/processed_data/cotrackpklds8

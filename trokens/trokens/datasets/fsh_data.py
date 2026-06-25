@@ -20,7 +20,7 @@ logger = logging.get_logger(__name__)
 # This will prefer matching against `behavior` names (common use),
 # but will fall back to matching `video_name` / `vid_id` if no overlap exists.
 FILTER_ONE_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee"]
-FILTER_TWO_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee", "Chase/Charge"]
+FILTER_TWO_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Chase/Charge"]
 
 
 @DATASET_REGISTRY.register()

@@ -67,7 +67,7 @@ export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset8
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=6
-export FILTER_ONE=True
+export FILTER_TWO=True
 
 case $MODE in
 	"train")
