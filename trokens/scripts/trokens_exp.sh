@@ -89,7 +89,8 @@ case $MODE in
 esac
 export NUM_GPUS=1
 export NUM_WORKERS=4
-export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
+# export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
+export MASTER_PORT=$(( ( RANDOM % 64511 ) + 1024 ))
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
 #set wandb id to random 8 character string
 export WANDB_ID="${EXP_NAME}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
