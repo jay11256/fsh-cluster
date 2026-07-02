@@ -316,12 +316,29 @@ def producer(clip_schedule, video_path, temp_clip_dir, window_len, q):
 full_schedule = get_clip_schedule(video_path, WINDOW_LEN, OVERLAP_LEN)
 total_clips   = len(full_schedule)
 
+def clip_is_complete(idx):
+    """Return True only if both the pkl and a finished .out log exist."""
+    pkl = os.path.join(OUTPUT_DIR, f"clip_{idx:05d}.pkl")
+    log = os.path.join(LOGS_DIR,   f"clip_{idx:05d}.out")
+    if not os.path.exists(pkl):
+        return False
+    if not os.path.exists(log):
+        return False
+    with open(log) as f:
+        return any(line.startswith("End:") for line in f)
+
 clip_schedule = [
     entry for i, entry in enumerate(full_schedule)
     if i % NUM_SHARDS == SHARD_ID
+    and not clip_is_complete(entry[0])
 ]
 
-print(f"Shard {SHARD_ID}/{NUM_SHARDS}: processing {len(clip_schedule)}/{total_clips} clips")
+done_count = sum(
+    1 for i, entry in enumerate(full_schedule)
+    if i % NUM_SHARDS == SHARD_ID
+    and clip_is_complete(entry[0])
+)
+print(f"Shard {SHARD_ID}/{NUM_SHARDS}: {done_count} already done, processing {len(clip_schedule)}/{total_clips} clips")
 print(f"Points per object: {NUM_POINTS} (3x3 grid)  |  Objects per clip: {NUM_OBJECTS} (fixed)  |  Total cols: {NUM_OBJECTS * NUM_POINTS}")
 
 clip_queue = queue.Queue(maxsize=2)
