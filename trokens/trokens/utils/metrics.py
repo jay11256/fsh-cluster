@@ -96,6 +96,65 @@ def multitask_topks_correct(preds, labels, ks=(1,)):
     return multitask_topks_correct
 
 
+def multilabel_f1(logits, labels, threshold=0.5):
+    """Macro F1 over classes with at least one positive label. Returns [0, 100]."""
+    stats = multilabel_per_class_stats(logits, labels, threshold=threshold)
+    f1_values = [s["f1"] for s in stats if s["support"] > 0]
+    if len(f1_values) == 0:
+        return torch.tensor(0.0, device=logits.device)
+    return torch.tensor(f1_values, device=logits.device).mean() * 100.0
+def multilabel_hamming_score(logits, labels, threshold=0.5):
+    """Fraction of correct label decisions. Returns [0, 100]."""
+    labels = labels.float()
+    preds = (torch.sigmoid(logits) >= threshold).float()
+    return (preds == labels).float().mean() * 100.0
+def multilabel_exact_match(logits, labels, threshold=0.5):
+    """Fraction of samples with all labels correct. Returns [0, 100]."""
+    labels = labels.float()
+    preds = (torch.sigmoid(logits) >= threshold).float()
+    return (preds == labels).all(dim=1).float().mean() * 100.0
+def multilabel_per_class_stats(logits, labels, threshold=0.5, class_names=None):
+    """Per-class TP/TN/FP/FN, precision, recall, F1."""
+    labels = labels.float()
+    preds = (torch.sigmoid(logits) >= threshold).float()
+    num_classes = labels.shape[1]
+    if class_names is None:
+        class_names = [str(i) for i in range(num_classes)]
+    stats = []
+    for class_idx in range(num_classes):
+        y_true = labels[:, class_idx]
+        y_pred = preds[:, class_idx]
+        tp = ((y_pred == 1) & (y_true == 1)).sum().item()
+        fp = ((y_pred == 1) & (y_true == 0)).sum().item()
+        fn = ((y_pred == 0) & (y_true == 1)).sum().item()
+        tn = ((y_pred == 0) & (y_true == 0)).sum().item()
+        precision = tp / (tp + fp + 1e-8)
+        recall = tp / (tp + fn + 1e-8)
+        f1 = (2 * precision * recall) / (precision + recall + 1e-8)
+        stats.append({
+            "class_idx": class_idx,
+            "class_name": class_names[class_idx],
+            "tp": tp, "tn": tn, "fp": fp, "fn": fn,
+            "support": int((y_true == 1).sum().item()),
+            "precision": precision, "recall": recall, "f1": f1,
+        })
+    return stats
+def format_multilabel_metrics_report(stats):
+    lines = [
+        "Per-class multi-label metrics", "=" * 80,
+        f"{'class':<24} {'TP':>6} {'TN':>6} {'FP':>6} {'FN':>6} "
+        f"{'precision':>10} {'recall':>10} {'f1':>10}",
+        "-" * 80,
+    ]
+    for row in stats:
+        lines.append(
+            f"{row['class_name']:<24} "
+            f"{row['tp']:>6} {row['tn']:>6} {row['fp']:>6} {row['fn']:>6} "
+            f"{row['precision']:>10.4f} {row['recall']:>10.4f} {row['f1']:>10.4f}"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def multitask_topk_accuracies(preds, labels, ks):
     """
     Computes the top-k accuracy for each k.

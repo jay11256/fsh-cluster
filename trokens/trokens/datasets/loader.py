@@ -122,8 +122,8 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
 
     dataset = build_dataset(dataset_name, cfg, split)
 
-    #Start will code
-    if dataset_name == 'Fshdata' and split in ['test']:
+    # Fshdata uses standard batching for multi-label training, not few-shot episodes.
+    if dataset_name == 'Fshdata':
         print('default sampler!')
         loader = torch.utils.data.DataLoader(
             dataset,
@@ -135,8 +135,9 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
             worker_init_fn=utils.loader_worker_init_fn(dataset),
         )
         return loader
-    #end will code
-    if cfg.TASK == 'few_shot':
+    
+    use_few_shot_sampler = cfg.TASK == 'few_shot' and dataset_name != 'Fshdata'
+    if use_few_shot_sampler:
         sampler = FewShotEpisodeSampler(dataset, cfg, split, less_iters)
         loader = torch.utils.data.DataLoader(
             dataset,

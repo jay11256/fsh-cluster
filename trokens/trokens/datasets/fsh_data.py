@@ -16,6 +16,21 @@ from .base_ds import BaseDataset
 logger = logging.get_logger(__name__)
 
 
+def _parse_behavior_labels(value):
+    """Parse a CSV behavior cell into a list of label strings."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ["unknown"]
+    text = str(value).strip()
+    if text == "":
+        return ["unknown"]
+    return text.split()
+
+
+def _behavior_key(labels):
+    """Stable hashable key for grouping / stratifying multi-label rows."""
+    return tuple(sorted(labels))
+
+
 # When True, only keep rows whose "name" matches the provided list.
 # This will prefer matching against `behavior` names (common use),
 # but will fall back to matching `video_name` / `vid_id` if no overlap exists.
@@ -69,76 +84,80 @@ class Fshdata(BaseDataset):
         if missing_columns:
             raise ValueError(f"Missing required columns in CSV: {missing_columns}")
 
-        # Normalize `video_path`: if relative, join with data_root; ensure string
-        def _normalize_video_path(p):
-            if not isinstance(p, str):
-                return str(p)
-            p = p.strip()
-            if p == '':
-                return p
-            return p if os.path.isabs(p) else os.path.join(self.data_root, p)
+        # Parse behavior column: space-separated labels -> list of strings
+        self.dataset_df['behavior'] = self.dataset_df['behavior'].apply(_parse_behavior_labels)
 
-        self.dataset_df['video_path'] = self.dataset_df['video_path'].apply(_normalize_video_path)
+        # Optionally remove rows containing any behavior with too few occurrences
+        if CUT_SMALLS:
+            label_counts = self.dataset_df['behavior'].explode().value_counts()
+            small_behaviors = set(label_counts[label_counts < 15].index.tolist())
+            if len(small_behaviors) > 0:
+                logger.info(f"Removing rows with behaviors that have <15 occurrences: {sorted(small_behaviors)}")
+                keep_mask = ~self.dataset_df['behavior'].apply(
+                    lambda labels: any(label in small_behaviors for label in labels)
+                )
+                self.dataset_df = self.dataset_df[keep_mask].reset_index(drop=True)
+            else:
+                logger.info("No behaviors to remove based on CUT_SMALLS threshold.")
+        
+        # Optionally filter to only the requested example/behavior names.
+        def filter_and_reduce_behaviors(df, requested, filter_name):
+            if len(requested) == 0:
+                logger.warning(f"{filter_name} enabled but behavior list is empty; no filtering applied.")
+                return df
+            before = len(df)
+            # Remove any behavior not in requested for each row, and drop rows with no remaining behaviors
+            def keep_only_requested(labels):
+                return [label for label in labels if label in requested]
+            df = df.copy()
+            df['behavior'] = df['behavior'].apply(keep_only_requested)
+            # Only keep rows that still have at least one label
+            keep_mask = df['behavior'].apply(lambda labels: len(labels) > 0)
+            df = df[keep_mask].reset_index(drop=True)
+            after = len(df)
+            logger.info(f"{filter_name} enabled: kept {after}/{before} rows by behavior filter. Unwanted behaviors removed from multi-labeled rows.")
+            return df
+
+        if FILTER_ONE:
+            requested = set([str(x).strip() for x in FILTER_ONE_BEHAVIORS if str(x).strip() != ""])
+            self.dataset_df = filter_and_reduce_behaviors(self.dataset_df, requested, "FILTER_ONE")
+
+        if FILTER_TWO:
+            requested = set([str(x).strip() for x in FILTER_TWO_BEHAVIORS if str(x).strip() != ""])
+            self.dataset_df = filter_and_reduce_behaviors(self.dataset_df, requested, "FILTER_TWO")
+
+        # Map each behavior string to a numeric id; store label_id as arrays per row
+        unique_behaviors = sorted(self.dataset_df['behavior'].explode().unique())
+        behavior_to_label = {behavior: idx for idx, behavior in enumerate(unique_behaviors)}
+        self.behavior_to_label = behavior_to_label
+        self.dataset_df['label_id'] = self.dataset_df['behavior'].apply(
+            lambda labels: np.array([behavior_to_label[label] for label in labels], dtype=np.int64)
+        )
+
+        # Create video_name (basename without extension)
+        self.dataset_df['video_name'] = self.dataset_df['video_path'].apply(
+            lambda x: os.path.splitext(os.path.basename(x))[0])
+
+        # Create feat_base_name on the full dataframe before splitting
+        self.dataset_df['feat_base_name'] = self.dataset_df['video_name'].apply(
+            lambda x: x + '.pkl')
 
         # Create vid_id from video_path (basename without extension)
         self.dataset_df['vid_id'] = self.dataset_df['video_path'].apply(
             lambda x: os.path.splitext(os.path.basename(x))[0] if isinstance(x, str) and x != '' else str(x))
-        
-        # Map behavior strings to numeric label_id
-        # Normalize behavior column: convert to str, strip whitespace, and replace missing/empty with 'unknown'
-        self.dataset_df['behavior'] = self.dataset_df['behavior'].fillna('unknown').apply(lambda x: str(x).strip())
-        self.dataset_df.loc[self.dataset_df['behavior'] == '', 'behavior'] = 'unknown'
 
-        # Optionally remove behaviors with too few occurrences
-        if CUT_SMALLS:
-            counts = self.dataset_df['behavior'].value_counts()
-            small_behaviors = counts[counts < 15].index.tolist()
-            if len(small_behaviors) > 0:
-                logger.info(f"Removing behaviors with <15 occurrences: {small_behaviors}")
-                self.dataset_df = self.dataset_df[~self.dataset_df['behavior'].isin(small_behaviors)].reset_index(drop=True)
-            else:
-                logger.info("No behaviors to remove based on CUT_SMALLS threshold.")
-        
-        # Create video_name (basename without extension)
-        self.dataset_df['video_name'] = self.dataset_df['video_path'].apply(
-            lambda x: os.path.splitext(os.path.basename(x))[0])
-        
-        # Optionally filter to only the requested example/behavior names.
-        if FILTER_ONE:
-            requested = set([str(x).strip() for x in FILTER_ONE_BEHAVIORS if str(x).strip() != ""])
-            if len(requested) > 0:
-                before = len(self.dataset_df)
-                self.dataset_df = self.dataset_df[self.dataset_df['behavior'].isin(requested)].reset_index(drop=True)
-                after = len(self.dataset_df)
-                logger.info(f"FILTER_ONE enabled: kept {after}/{before} rows by behavior filter.")
-            else:
-                logger.warning("FILTER_ONE enabled but FILTER_ONE_BEHAVIORS is empty; no filtering applied.")
-
-        if FILTER_TWO:
-            requested = set([str(x).strip() for x in FILTER_TWO_BEHAVIORS if str(x).strip() != ""])
-            if len(requested) > 0:
-                before = len(self.dataset_df)
-                self.dataset_df = self.dataset_df[self.dataset_df['behavior'].isin(requested)].reset_index(drop=True)
-                after = len(self.dataset_df)
-                logger.info(f"FILTER_TWO enabled: kept {after}/{before} rows by behavior filter.")
-            else:
-                logger.warning("FILTER_TWO enabled but FILTER_TWO_BEHAVIORS is empty; no filtering applied.")
-
-        # Create id_labels
-        unique_behaviors = sorted(self.dataset_df['behavior'].unique())
-        behavior_to_label = {behavior: idx for idx, behavior in enumerate(unique_behaviors)}
-        self.dataset_df['label_id'] = self.dataset_df['behavior'].map(behavior_to_label).astype(int)
-
-        # Create feat_base_name
-        self.dataset_df['feat_base_name'] = self.dataset_df['video_name'].apply(
-            lambda x: x + '.pkl')
-        
         # Handle splits
         # If CSV has a 'split' or 'new_split' column, use it; otherwise create automatic split
         if 'split' in self.dataset_df.columns:
             self.dataset_df['new_split'] = self.dataset_df['split']
             # Log behavior distribution in each split
-            split_counts = self.dataset_df.groupby(['behavior', 'new_split']).size().unstack(fill_value=0)
+            behavior_for_log = self.dataset_df['behavior'].apply(lambda labels: " ".join(sorted(labels)))
+            split_counts = (
+                self.dataset_df.assign(behavior=behavior_for_log)
+                .groupby(['behavior', 'new_split'])
+                .size()
+                .unstack(fill_value=0)
+            )
             logger.info(f"Split distribution by behavior:\n{split_counts}")
         elif 'new_split' in self.dataset_df.columns:
             pass  # Already exists
@@ -150,12 +169,12 @@ class Fshdata(BaseDataset):
         # Filter by mode
         self.split_df = self.dataset_df[
             self.dataset_df['new_split'] == self.mode].reset_index(drop=True)
-        
+
         # Create feat_path
         self.base_feature_path = self.cfg.DATA.PATH_TO_TROKEN_PT_DATA
         self.split_df['feat_path'] = self.split_df['feat_base_name'].apply(
             lambda x: os.path.join(self.base_feature_path, x))
-        
+
         # Filter out rows where feature files don't exist
         if self.cfg.POINT_INFO.ENABLE:
             original_len = len(self.split_df)
@@ -183,31 +202,31 @@ class Fshdata(BaseDataset):
         # Set random seed for reproducibility
         np.random.seed(split_seed)
         
-        # Create stratified split based on behavior labels
-        # Group by behavior to ensure each behavior is represented in both splits
+        # Create stratified split based on multi-label behavior combinations
         self.dataset_df['new_split'] = 'test'  # Initialize all as test
-        
-        # For each behavior, randomly assign train/test
-        for behavior in self.dataset_df['behavior'].unique():
-            behavior_mask = self.dataset_df['behavior'] == behavior
+        behavior_groups = self.dataset_df['behavior'].apply(_behavior_key)
+
+        for behavior_key in behavior_groups.unique():
+            behavior_mask = behavior_groups == behavior_key
             behavior_indices = self.dataset_df[behavior_mask].index
-            
-            # Shuffle indices
+
             shuffled_indices = np.random.permutation(behavior_indices)
-            
-            # Calculate split point
             n_train = int(len(shuffled_indices) * train_ratio)
-            
-            # Assign train/test
             train_indices = shuffled_indices[:n_train]
             self.dataset_df.loc[train_indices, 'new_split'] = 'train'
-        
+
         # Log split statistics
         train_count = (self.dataset_df['new_split'] == 'train').sum()
         test_count = (self.dataset_df['new_split'] == 'test').sum()
         logger.info(f"Automatic split created: {train_count} train samples ({train_count/len(self.dataset_df)*100:.1f}%), "
                    f"{test_count} test samples ({test_count/len(self.dataset_df)*100:.1f}%)")
-        
+
         # Log behavior distribution in each split
-        split_counts = self.dataset_df.groupby(['behavior', 'new_split']).size().unstack(fill_value=0)
+        behavior_for_log = self.dataset_df['behavior'].apply(lambda labels: " ".join(sorted(labels)))
+        split_counts = (
+            self.dataset_df.assign(behavior=behavior_for_log)
+            .groupby(['behavior', 'new_split'])
+            .size()
+            .unstack(fill_value=0)
+        )
         logger.info(f"Split distribution by behavior:\n{split_counts}")

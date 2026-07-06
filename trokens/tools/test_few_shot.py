@@ -36,62 +36,6 @@ def wandb_init_dict(cfg_node):
             cfg_dict[k] = wandb_init_dict(v)
         return cfg_dict
 # pylint: disable=line-too-long
-def process_patch_tokens(cfg, support_tokens, query_tokens):
-    """
-    Process the patch tokens for few shot learning.
-    Ref: https://github.com/alibaba-mmai-research/MoLo/blob/f7f73b6dd8cba446b414b1c47652ab26033bc88e/models/base/few_shot.py#L2552
-    args:
-        cfg: config
-        support_tokens: (num_support, temp_len, num_patches, embed_dim)
-        query_tokens: (num_query, temp_len, num_patches, embed_dim)
-    """
-    #Putting an activation here, may be not needed
-    support_tokens = F.relu(support_tokens)
-    query_tokens = F.relu(query_tokens)
-    num_supports = support_tokens.shape[0]
-    num_querries = query_tokens.shape[0]
-    if not cfg.MODEL.USE_EXTRA_ENCODER:
-        if cfg.FEW_SHOT.PATCH_TOKENS_AGG == 'temporal':
-            support_tokens = support_tokens.mean(dim=1)
-            query_tokens = query_tokens.mean(dim=1)
-        elif cfg.FEW_SHOT.PATCH_TOKENS_AGG == 'spatial':
-            support_tokens = support_tokens.mean(dim=2)
-            query_tokens = query_tokens.mean(dim=2)
-        elif cfg.FEW_SHOT.PATCH_TOKENS_AGG == 'no_agg':
-            support_tokens = rearrange(support_tokens, 'b t p e -> b (t p) e')
-            query_tokens = rearrange(query_tokens, 'b t p e -> b (t p) e')
-        else:
-            raise NotImplementedError(
-                f"Aggregation method {cfg.FEW_SHOT.PATCH_TOKENS_AGG} not implemented")
-
-    support_tokens = rearrange(support_tokens, 'b p e -> (b p) e')
-    query_tokens = rearrange(query_tokens, 'b p e -> (b p) e')
-    sim_matrix = cos_sim(query_tokens, support_tokens)
-    dist_matrix = 1 - sim_matrix
-
-    dist_rearranged = rearrange(dist_matrix, '(q qt) (s st) -> q s qt st',
-                                q=num_querries, s=num_supports)
-    # Take the minimum distance for each query token
-    dist_logits = dist_rearranged.min(3)[0].sum(2) + dist_rearranged.min(2)[0].sum(2)
-    if cfg.FEW_SHOT.DIST_NORM == 'max_div':
-        max_dist = dist_logits.max(dim=1, keepdim=True)[0]
-        dist_logits = dist_logits / max_dist
-    elif cfg.FEW_SHOT.DIST_NORM == 'max_sub':
-        max_dist = dist_logits.max(dim=1, keepdim=True)[0]
-        dist_logits = max_dist - dist_logits
-    return - dist_logits
-
-def cos_sim(x, y, epsilon=0.01):
-    """
-    Calculates the cosine similarity between the last dimension of two tensors.
-    """
-    numerator = torch.matmul(x, y.transpose(-1,-2))
-    xnorm = torch.norm(x, dim=-1).unsqueeze(-1)
-    ynorm = torch.norm(y, dim=-1).unsqueeze(-1)
-    denominator = torch.matmul(xnorm, ynorm.transpose(-1,-2)) + epsilon
-    dists = torch.div(numerator, denominator)
-    return dists
-
 
 def topks_correct_with_misclassified_video_names(preds, labels, ks, video_names):
     """
@@ -146,182 +90,76 @@ def video_names_from_meta(meta):
         return [str(x) for x in names.detach().cpu().reshape(-1).tolist()]
     raise TypeError(f"Unsupported video_name type: {type(names)}")
 
-def support_query_split(preds, labels, metadata):
-    """
-    Split the preds and labels into support and query.
-    """
-
-    device = preds.device
-    sample_info = np.array(metadata['sample_type'])
-    batch_labels = metadata['batch_label']
-    support_condition = sample_info=='support'
-    support_labels = labels[support_condition]
-    support_preds = preds[support_condition]
-    support_batch_labels = batch_labels[support_condition]
-
-    # average the support preds for each class
-    support_to_take = []
-    support_main_label_to_take = []
-    support_batch_label_to_take = []
-    for label in np.unique(support_batch_labels.cpu().numpy()):
-        label_condition = support_batch_labels==label
-        label_mean_support = support_preds[label_condition].mean(dim=0,
-                                                                keepdims=True)
-        support_main_label = support_labels[label_condition][0]
-        support_main_label_to_take.append(support_main_label)
-        support_batch_label_to_take.append(label)
-        support_to_take.append(label_mean_support)
-    support_labels = torch.tensor(support_main_label_to_take, device=device)
-    support_batch_labels = torch.tensor(support_batch_label_to_take, device=device)
-    support_preds = torch.cat(support_to_take, dim=0)
-
-
-    query_labels = labels[~support_condition]
-    query_preds = preds[~support_condition]
-    query_batch_labels = batch_labels[~support_condition]
-    return_dict = {
-        'query_labels':query_labels,
-        'query_batch_labels':query_batch_labels,
-        'support_labels':support_labels,
-        'support_batch_labels':support_batch_labels,
-        'support_preds':support_preds,
-        'query_preds':query_preds
-    }
-    return return_dict
-
-logger = logging.get_logger(__name__)
-
 def conv_fp16(var):
     """Convert to float16.
     """
     return np.float16(np.around(var, 4))
 
 @torch.no_grad()
-def test_epoch(val_loader, model, val_meter, cur_epoch, cfg):
-    """
-    Evaluate the model on the val set.
-    Args:
-        val_loader (loader): data loader to provide validation data.
-        model (model): model to evaluate the performance.
-        val_meter (ValMeter): meter instance to record and calculate the metrics.
-        cur_epoch (int): number of the current epoch of training.
-        cfg (CfgNode): configs. Details can be found in
-            trokens/config/defaults.py
-        writer (TensorboardWriter, optional): TensorboardWriter object
-            to writer Tensorboard log.
-    """
-
-    # Evaluation mode enabled. The running stats would not be updated.
+def test_epoch(val_loader, model, cur_epoch, cfg):
     model.eval()
-    #will code
-    num_test_classes = len(val_loader.dataset.split_df['label_id'].unique())
-    confusion_matrix = np.zeros((num_test_classes, num_test_classes))
-    all_df = []
-    all_faults = []
-    
-
-    total_top1, total_top3 = 0, 0
-    inputs_processed = 0
+    all_preds, all_labels, all_df = [], [], []
 
     for cur_iter, (inputs, labels, _, meta) in enumerate(val_loader):
-        if cur_iter > len(val_loader):
-            break
         if cfg.NUM_GPUS:
-            # Transferthe data to the current GPU device.
             inputs, labels, meta = misc.iter_to_cuda([inputs, labels, meta])
+        labels = labels.float()
 
-        input_dict = {'video':inputs, 'metadata':meta}
+        model_out = model({'video': inputs, 'metadata': meta})
+        preds = model_out[0] if isinstance(model_out, tuple) else model_out
 
-        inputs_processed += inputs.size(0)
+        if cfg['wandb']:
+            cfg['wandb'].log({
+                'iteration': cur_iter,
+                'test_iter_f1': metrics.multilabel_f1(preds, labels).item(),
+                'test_iter_hamming': metrics.multilabel_hamming_score(preds, labels).item(),
+                'test_iter_exact_match': metrics.multilabel_exact_match(preds, labels).item(),
+            })
 
-        preds, _ = model(input_dict) #get predictions
-        
-        few_shotk_correct = metrics.topks_correct(preds,
-                                                    labels, (1, 3))
-
-        """
-        vid_names = video_names_from_meta(meta)
-        #print(f"video names in test_epoch: {vid_names}")
-        few_shotk_correct, faults = topks_correct_with_misclassified_video_names(preds,labels,(1,3),vid_names) 
-        all_faults.extend(faults)
-        """
-        
-        fsh_acc_top1, fsh_acc_top3 = [
-            (x / preds.size(0)) * 100.0 for x in few_shotk_correct
-        ]
-
-        cfg['wandb'].log({
-            'iteration': cur_iter,
-            'fsh_acc1': fsh_acc_top1.item(),
-            'fsh_acc3': fsh_acc_top3.item(),
-        })
-
-        total_top1 += fsh_acc_top1.item() * inputs.size(0)  
-        total_top3 += fsh_acc_top3.item() * inputs.size(0)
-
-        if cfg.NUM_GPUS > 1:
-            preds, labels = du.all_gather([preds, labels])
-
-        '''
-        # Explicitly declare reduction to mean.
-        loss_fun = losses.get_loss_func(cfg)(
-            reduction="mean"
-        )
-        '''
-        #classfication_loss = loss_fun(preds, labels)
-        #loss_dict = {'classfication_loss':classfication_loss}
-
-
-        preds = preds.cpu().numpy()
-        labels = labels.cpu().numpy()
-
+        all_preds.append(preds)
+        all_labels.append(labels)
 
         #vid_names = video_names_from_meta(meta)
-        #print(f"video names in test_epoch: {vid_names[0]} {vid_names[1]} {vid_names[2]}")
-        #print(preds[0])
-        #print(preds[1])
-        #print(preds[2])
-        #print("losses now")
-        #print(classfication_loss)
+        #print(preds[0]); print(preds[1]); print(preds[2])
 
-        #print("Unique labels:", np.unique(labels))
-        #print("Max label:", labels.max())
-        #print("Max pred:", preds.argmax(axis=1).max())
-        #print("Confusion matrix size:", confusion_matrix.shape)
+        preds_np = preds.detach().cpu().numpy()
+        labels_np = labels.detach().cpu().numpy()
+        pred_bin = (1 / (1 + np.exp(-preds_np)) >= 0.5).astype(np.int64)
+        all_df.append(pd.DataFrame({
+            'y_true': [",".join(map(str, np.where(r > 0)[0])) for r in labels_np],
+            'y_preds': [",".join(map(str, np.where(r > 0)[0])) for r in pred_bin],
+        }))
 
-        np.add.at(confusion_matrix, (labels, preds.argmax(axis=1)), 1)
+    all_preds = torch.cat(all_preds)
+    all_labels = torch.cat(all_labels)
+    if cfg.NUM_GPUS > 1:
+        all_preds, all_labels = du.all_gather([all_preds, all_labels])
 
-        batch_df = pd.DataFrame({'y_true':labels, 'y_preds':preds.argmax(axis=1)})
-        all_df.append(batch_df)
-        
-        continue
+    behavior_to_label = getattr(val_loader.dataset, "behavior_to_label", {})
+    label_to_name = {v: k for k, v in behavior_to_label.items()}
+    class_names = [label_to_name.get(i, str(i)) for i in range(all_labels.shape[1])]
 
-        #end of fsh accuracy stuff
+    per_class = metrics.multilabel_per_class_stats(all_preds, all_labels, class_names=class_names)
+    total_f1 = metrics.multilabel_f1(all_preds, all_labels).item()
+    total_hamming = metrics.multilabel_hamming_score(all_preds, all_labels).item()
+    total_exact = metrics.multilabel_exact_match(all_preds, all_labels).item()
 
-    # Log epoch stats.
-    # val_meter.log_epoch_stats(cur_epoch)
-    total_top1 = total_top1 / inputs_processed
-    total_top3 = total_top3 / inputs_processed
-    log_dict = {
-        'test_acc1': total_top1,
-        'test_acc3': total_top3,
-        'epoch': cur_epoch}
     if cfg['wandb']:
-        cfg['wandb'].log(log_dict)
+        cfg['wandb'].log({
+            'test_f1': total_f1,
+            'test_hamming': total_hamming,
+            'test_exact_match': total_exact,
+            'epoch': cur_epoch,
+        })
 
-    all_df = pd.concat(all_df)
-    all_df.to_csv(os.path.join(cfg.OUTPUT_DIR,cfg['csv_dump_name']))
+    pd.concat(all_df, ignore_index=True).to_csv(
+        os.path.join(cfg.OUTPUT_DIR, cfg['csv_dump_name']), index=False)
 
-    conf = pd.DataFrame(
-        confusion_matrix,
-        index=[f'true_{i}' for i in range(num_test_classes)],
-        columns=[f'pred_{i}' for i in range(num_test_classes)]
-    )
-    conf.to_csv(os.path.join(cfg.OUTPUT_DIR,'confusion_matrix.csv'))
-
-    #with open(os.path.join(cfg.OUTPUT_DIR,'incorrect_dump.txt'), "w") as f:
-    #    f.write("\n".join(all_faults))
-    # val_meter.reset()
+    with open(os.path.join(cfg.OUTPUT_DIR, 'metrics.txt'), 'w') as f:
+        f.write(f"macro_f1: {total_f1:.4f}\n")
+        f.write(f"hamming_score: {total_hamming:.4f}\n")
+        f.write(f"exact_match: {total_exact:.4f}\n\n")
+        f.write(metrics.format_multilabel_metrics_report(per_class))
 
 # pylint: disable=redefined-outer-name
 def calculate_and_update_precise_bn(loader, model, num_iters=200, use_gpu=True):
@@ -346,8 +184,6 @@ def calculate_and_update_precise_bn(loader, model, num_iters=200, use_gpu=True):
 
     # Update the bn stats.
     update_bn_stats(model, _gen_loader(), num_iters)
-
-
 
 def test_few_shot(cfg, args, wandb_run=None):
     """
@@ -386,18 +222,16 @@ def test_few_shot(cfg, args, wandb_run=None):
             wandb_instance.define_metric("val*", step_metric="epoch")
             wandb_instance.define_metric("test*", step_metric="epoch")
 
-            wandb_instance.define_metric("train_loss", summary="min")
-            wandb_instance.define_metric("val_loss", summary="min")
-            wandb_instance.define_metric("test_loss", summary="min")
-            wandb_instance.define_metric("val_top5_acc", summary="max")
-            wandb_instance.define_metric("val_top1_acc", summary="max")
-            wandb_instance.define_metric("test_top1_acc_few_shot", summary="max")
-            wandb_instance.define_metric("overall_accuracy", summary="max", step_metric="epoch")
+            wandb_instance.define_metric("test_f1", summary="max")
+            wandb_instance.define_metric("test_hamming", summary="max")
+            wandb_instance.define_metric("test_exact_match", summary="max")
         else:
             wandb_instance = None
     cfg['wandb'] = wandb_instance
     cfg['csv_dump_name'] = 'preds_dump.csv'
 
+    logger = logging.get_logger(__name__)
+    
     # Init multigrid.
     logger.info("Test with config:")
     logger.info(pprint.pformat(cfg))
@@ -408,7 +242,7 @@ def test_few_shot(cfg, args, wandb_run=None):
     val_loader = loader.construct_loader(cfg, "test") # MOLO uses test set for validation
     # val_meter = ValMeter(len(val_loader), cfg)
 
-    test_epoch(val_loader, model, None, cur_epoch, cfg)
+    test_epoch(val_loader, model, cur_epoch, cfg)
     # Close wandb logging
     if wandb_instance is not None:
         wandb_instance.finish()

@@ -303,6 +303,13 @@ class BaseDataset(torch.utils.data.Dataset):
                 metadata['reverse'] = False
 
         label = self._labels[index]
+        if self.cfg.DATA.MULTI_LABEL:
+            num_classes = self.cfg.MODEL.NUM_CLASSES
+            multi_hot = torch.zeros(num_classes, dtype=torch.float32)
+            label_ids = label if isinstance(label, (list, np.ndarray)) else [label]
+            label_ids = torch.as_tensor(label_ids, dtype=torch.long)
+            multi_hot[label_ids] = 1.0
+            label = multi_hot
         vid_id = self.dict_vid_id[index // self._num_clips]
 
         return video, label, vid_id, metadata
