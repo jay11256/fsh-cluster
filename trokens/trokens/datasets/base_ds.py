@@ -169,7 +169,8 @@ class BaseDataset(torch.utils.data.Dataset):
 
         video = utils.read_video(self._path_to_videos[index],
                                     total_frames=pred_tracks.shape[0],
-                                    indices_to_take=index_select)
+                                    indices_to_take=index_select,
+                                    cache_dir=self.cfg.DATA.FRAME_CACHE_DIR or None)
 
 
 

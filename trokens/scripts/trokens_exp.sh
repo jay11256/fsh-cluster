@@ -1,11 +1,12 @@
 #!/bin/sh
 #SBATCH --job-name=ds8
-#SBATCH --ntasks=4
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:rtxa6000:1
 #SBATCH --qos=default
 #SBATCH --account=nexus
 #SBATCH --partition=tron
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --time=72:00:00
 #SBATCH --output=../trial_run_outputs/ds8_%j.out
 #SBATCH --error=../trial_run_outputs/ds8_%j.out
@@ -39,16 +40,21 @@ case $PT_DATA in
 		POINT_INFO_ENABLE=False 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
+		# Decoded-frame cache shared by all runs on this dataset; filled lazily on
+		# first epoch, or ahead of time with tools/dump_frame_cache.py
+		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds8none
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
+		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds8trokens
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds8"
 		export NUM_POINTS_TO_SAMPLE=18
+		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds8sam3
         ;;
 esac
 
@@ -88,7 +94,7 @@ case $MODE in
 		;;
 esac
 export NUM_GPUS=1
-export NUM_WORKERS=4
+export NUM_WORKERS=12
 # export MASTER_PORT=$(cat /dev/urandom | tr -dc '0-9' | fold -w 4 | head -n 1) 
 export MASTER_PORT=$(( ( RANDOM % 64511 ) + 1024 ))
 export POINT_INFO_NAME="cotracker3_bip_fr_32"
@@ -114,6 +120,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
 	DATA.USE_RAND_AUGMENT True \
 	DATA.PATH_TO_DATA_DIR $DATA_DIR \
 	DATA.PATH_TO_TROKEN_PT_DATA $TROKENS_PT_DATA \
+	DATA.FRAME_CACHE_DIR $FRAME_CACHE_DIR \
 	FEW_SHOT.K_SHOT $K_SHOT \
 	FEW_SHOT.TRAIN_QUERY_PER_CLASS 6 \
 	FEW_SHOT.N_WAY $N_WAY \

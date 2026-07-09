@@ -311,6 +311,10 @@ _C.DATA.PATH_PREFIX = ""
 _C.DATA.NUM_FRAMES = 8
 _C.DATA.BOTH_DIRECTION = False
 
+# Directory holding cached decoded frames (JPEG bytes, written on first
+# access). Empty string disables the cache.
+_C.DATA.FRAME_CACHE_DIR = ""
+
 # The video sampling rate of the input clip.
 _C.DATA.SAMPLING_RATE = 8
 

@@ -3,7 +3,9 @@
 import logging
 import numpy as np
 import os
+import hashlib
 import json
+import pickle
 import random
 import time
 from collections import defaultdict
@@ -46,12 +48,65 @@ def read_k400_video(video_path, max_fps=10, indices_to_take=None):
     return frames
 
 
-def read_video(video_path, total_frames, indices_to_take=None):
+def _frame_cache_path(cache_dir, video_path, total_frames, indices_to_take):
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    if indices_to_take is None:
+        ix = "all"
+    else:
+        ix = "-".join(str(int(i)) for i in indices_to_take)
+        if len(ix) > 64:
+            ix = hashlib.md5(ix.encode()).hexdigest()[:16]
+    return os.path.join(cache_dir, f"{stem}_tf{int(total_frames)}_ix{ix}.pkl")
+
+
+def _write_frame_cache(cache_path, frames):
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        jpgs = []
+        for frame in frames:
+            ok, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                                   [cv2.IMWRITE_JPEG_QUALITY, 95])
+            if not ok:
+                return
+            jpgs.append(buf.tobytes())
+        # write via temp file + rename so concurrent dataloader workers
+        # never observe a partially written cache entry
+        tmp_path = f"{cache_path}.{os.getpid()}.tmp"
+        with open(tmp_path, "wb") as f:
+            pickle.dump(jpgs, f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp_path, cache_path)
+    except Exception:
+        logger.warning("Failed writing frame cache %s", cache_path, exc_info=True)
+
+
+def read_video(video_path, total_frames, indices_to_take=None, cache_dir=None):
+    """Read RGB frames from a video at deterministic indices.
+
+    The frame indices are fully determined by (total_frames,
+    indices_to_take), so when `cache_dir` is set the decoded frames are
+    cached as JPEG bytes and reused on later calls; mp4 decoding otherwise
+    dominates dataloader time.
+    """
+    cache_path = None
+    if cache_dir:
+        cache_path = _frame_cache_path(cache_dir, video_path, total_frames,
+                                       indices_to_take)
+        try:
+            with open(cache_path, "rb") as f:
+                jpgs = pickle.load(f)
+            frames = [cv2.cvtColor(
+                cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR),
+                cv2.COLOR_BGR2RGB) for b in jpgs]
+            return np.stack(frames)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            logger.warning("Corrupt frame cache %s; re-decoding", cache_path)
+
     global DECORD_AVAILABLE
     duration = -1
     if DECORD_AVAILABLE:
-        vr = VideoReader(video_path, num_threads=1)
-        fps = np.around(vr.get_avg_fps())
+        vr = VideoReader(video_path)
         num_frames = len(vr)
         duration = vr.get_frame_timestamp(num_frames-1)[-1]
         use_cv2 = False
@@ -65,10 +120,15 @@ def read_video(video_path, total_frames, indices_to_take=None):
     if indices_to_take is not None:
         frames_to_take = frames_to_take[indices_to_take]
     if not use_cv2:
-        frames = [vr[i].asnumpy()[None] for i in frames_to_take]
+        # batch-decode unique indices; duplicates can appear for very
+        # short clips and decord seeks once per requested frame
+        uniq, inverse = np.unique(frames_to_take, return_inverse=True)
+        frames = vr.get_batch(uniq).asnumpy()[inverse]
     else:
-        frames = [vr[i][None] for i in frames_to_take]
-    frames = np.concatenate(frames, axis=0)
+        frames = np.concatenate([vr[i][None] for i in frames_to_take], axis=0)
+
+    if cache_path is not None:
+        _write_frame_cache(cache_path, frames)
     return frames
 
 
