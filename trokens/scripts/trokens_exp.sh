@@ -1,15 +1,15 @@
 #!/bin/sh
-#SBATCH --job-name=ds8
+#SBATCH --job-name=ds9
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:rtxa6000:1
-#SBATCH --qos=default
+#SBATCH --qos=high
 #SBATCH --account=nexus
 #SBATCH --partition=tron
 #SBATCH --mem=64G
-#SBATCH --time=72:00:00
-#SBATCH --output=../trial_run_outputs/ds8_%j.out
-#SBATCH --error=../trial_run_outputs/ds8_%j.out
+#SBATCH --time=24:00:00
+#SBATCH --output=../trial_run_outputs/ds9_speedup_%j.out
+#SBATCH --error=../trial_run_outputs/ds9_speedup_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE 
@@ -42,19 +42,19 @@ case $PT_DATA in
 		export NUM_POINTS_TO_SAMPLE=256
 		# Decoded-frame cache shared by all runs on this dataset; filled lazily on
 		# first epoch, or ahead of time with tools/dump_frame_cache.py
-		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds8none
+		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds9none
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True 
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
-		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds8trokens
+		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds9trokens
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds8"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds9"
 		export NUM_POINTS_TO_SAMPLE=18
-		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds8sam3
+		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds9sam3
         ;;
 esac
 
@@ -66,14 +66,14 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds8
+export EXP_NAME=ds9_speedup
 export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset8
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset9
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=6
-export FILTER_TWO=True
+export FILTER_ONE=True
 
 case $MODE in
 	"train")
