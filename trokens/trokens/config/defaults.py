@@ -312,8 +312,13 @@ _C.DATA.NUM_FRAMES = 8
 _C.DATA.BOTH_DIRECTION = False
 
 # Directory holding cached decoded frames (JPEG bytes, written on first
-# access). Empty string disables the cache.
+# access). Only used when FRAME_CACHE_ENABLE is True.
 _C.DATA.FRAME_CACHE_DIR = ""
+
+# Whether to read/write the decoded-frame cache at FRAME_CACHE_DIR. Kept
+# separate from FRAME_CACHE_DIR so the path can stay fixed across an
+# ablation while this flag toggles caching on/off.
+_C.DATA.FRAME_CACHE_ENABLE = False
 
 # The video sampling rate of the input clip.
 _C.DATA.SAMPLING_RATE = 8

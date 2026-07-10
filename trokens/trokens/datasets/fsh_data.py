@@ -30,13 +30,8 @@ def _behavior_key(labels):
     """Stable hashable key for grouping / stratifying multi-label rows."""
     return tuple(sorted(labels))
 
-
-# When True, only keep rows whose "name" matches the provided list.
-# This will prefer matching against `behavior` names (common use),
-# but will fall back to matching `video_name` / `vid_id` if no overlap exists.
-FILTER_ONE_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Run/Flee"]
+FILTER_ONE_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Chase/Charge","NoBehavior"]
 FILTER_TWO_BEHAVIORS = ["Peck","Quiver","Lead","Bite","Tilt","Chase/Charge"]
-
 
 @DATASET_REGISTRY.register()
 class Fshdata(BaseDataset):

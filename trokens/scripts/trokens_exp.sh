@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=ds9
+#SBATCH --job-name=ds11
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:rtxa6000:1
@@ -8,21 +8,24 @@
 #SBATCH --partition=tron
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
-#SBATCH --output=../trial_run_outputs/ds9_speedup_%j.out
-#SBATCH --error=../trial_run_outputs/ds9_speedup_%j.out
+#SBATCH --output=../trial_run_outputs/ds11.out
+#SBATCH --error=../trial_run_outputs/ds11.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
-# ''' USAGE 
-# run this file from the scripts folder 
-# sbatch trokens_exp.sh <N_WAY> <K_SHOT> <PT_DATA> <MODE>
+# ''' USAGE
+# run this file from the scripts folder
+# sbatch trokens_exp.sh <N_WAY> <K_SHOT> <PT_DATA> <MODE> [CACHE_MODE]
+# CACHE_MODE options: 'cache' (default, use the decoded-frame cache) or
+#   'nocache' (always decode from mp4; for ablations comparing the two)
 # If you are just testing, set the checkpoint file and uncomment the last line in script
 # '''
 
 #command line arguments
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
-	echo "Error: Missing required parameters. Usage: $0 <N_WAY> <K_SHOT> <PT_DATA> <MODE>"
+	echo "Error: Missing required parameters. Usage: $0 <N_WAY> <K_SHOT> <PT_DATA> <MODE> [CACHE_MODE]"
 	echo "PT_DATA options: 'none', 'trokens', 'sam3'"
 	echo "MODE options: 'train', 'test', 'both'"
+	echo "CACHE_MODE options: 'cache' (default), 'nocache'"
 	exit 1
 fi
 
@@ -30,6 +33,17 @@ N_WAY=$1
 K_SHOT=$2
 PT_DATA=$3
 MODE=$4
+CACHE_MODE=${5:-cache}
+
+if [[ "$CACHE_MODE" != "cache" && "$CACHE_MODE" != "nocache" ]]; then
+    echo "Error: Invalid CACHE_MODE option. Must be 'cache' or 'nocache'"
+    exit 1
+fi
+if [[ "$CACHE_MODE" == "cache" ]]; then
+    export FRAME_CACHE_ENABLE=True
+else
+    export FRAME_CACHE_ENABLE=False
+fi
 
 if [[ "$PT_DATA" != "none" && "$PT_DATA" != "trokens" && "$PT_DATA" != "sam3" ]]; then
     echo "Error: Invalid PT_DATA option. Must be 'none', 'trokens', or 'sam3'"
@@ -41,20 +55,22 @@ case $PT_DATA in
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
 		# Decoded-frame cache shared by all runs on this dataset; filled lazily on
-		# first epoch, or ahead of time with tools/dump_frame_cache.py
-		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds9none
+		# first epoch, or ahead of time with tools/dump_frame_cache.py.
+		# Respects a pre-exported FRAME_CACHE_DIR (e.g. from an ablation
+		# script) instead of always overwriting it.
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds11none}
         ;;
     "trokens")
-		POINT_INFO_ENABLE=True 
+		POINT_INFO_ENABLE=True
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
-		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds9trokens
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds11trokens}
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds9"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds11"
 		export NUM_POINTS_TO_SAMPLE=18
-		export FRAME_CACHE_DIR=/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds9sam3
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds11sam3}
         ;;
 esac
 
@@ -66,10 +82,14 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds9_speedup
-export SECONDARY_EXP_NAME="${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
+export EXP_NAME=${EXP_NAME:-ds11_bsri}
+# Default naming is unchanged from before (no CACHE_MODE suffix) so existing
+# AUTO_RESUME checkpoints keep resolving to the same OUTPUT_DIR. Callers that
+# want cache/nocache runs kept separate (e.g. the cache ablation) should
+# export SECONDARY_EXP_NAME themselves before invoking this script.
+export SECONDARY_EXP_NAME=${SECONDARY_EXP_NAME:-"${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"}
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset9
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset11
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=6
@@ -121,6 +141,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
 	DATA.PATH_TO_DATA_DIR $DATA_DIR \
 	DATA.PATH_TO_TROKEN_PT_DATA $TROKENS_PT_DATA \
 	DATA.FRAME_CACHE_DIR $FRAME_CACHE_DIR \
+	DATA.FRAME_CACHE_ENABLE $FRAME_CACHE_ENABLE \
 	FEW_SHOT.K_SHOT $K_SHOT \
 	FEW_SHOT.TRAIN_QUERY_PER_CLASS 6 \
 	FEW_SHOT.N_WAY $N_WAY \

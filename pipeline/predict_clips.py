@@ -13,25 +13,26 @@ import numpy as np
 DATA_DIR = "/fs/vulcan-projects/fsh_track/bhargav/data/60min_0522/clips"
 DATA_CSV_PATH = None #Leave none unless csv made in advance
 #Points
-POINT_INFO_ENABLE = True
+POINT_INFO_ENABLE = False
 TROKENS_PT_DATA = (
     "/fs/vulcan-projects/fsh_track/bhargav/data/60min_0522/pkls"
 )
-NUM_POINTS_TO_SAMPLE = 18
+NUM_POINTS_TO_SAMPLE = 256
 #Model
 CHECKPOINT_FILE = (
-    "/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-none-both/checkpoints/checkpoint_best.pyth"
+    "/fs/vulcan-projects/fsh_track/models/ds11/2_way-1_shot-none-both/checkpoints/checkpoint_best.pyth"
 )
 #Output
-BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/will/in_prog_preds/0522"
+BASE_OUTPUT_DIR = "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/ds11_check"
 
 #Dont need changing
 TORCH_HOME = (
     "/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home"
 )
 CONFIG_TO_USE = "fshdata"
-NUM_CLASSES = 6
+NUM_CLASSES = 7
 FILTER_ONE = True
+FILTER_TWO = True
 POINT_INFO_NAME = "cotracker3_bip_fr_32"
 N_WAY = 5
 K_SHOT = 3
@@ -103,13 +104,13 @@ def main():
         "MODEL.DINO_CONFIG", "dinov2_vitb14",
         "MODEL.MOTION_MODULE.USE_CROSS_MOTION_MODULE", "True",
         "MODEL.MOTION_MODULE.USE_HOD_MOTION_MODULE", "True",
-        "DATA_LOADER.FILTER_ONE", str(FILTER_ONE),
+        "DATA_LOADER.FILTER_ONE", str(FILTER_TWO),
         "DATA_LOADER.DATA_CSV_PATH", data_csv_path,
         "MODEL.NUM_CLASSES", str(NUM_CLASSES),
         "TEST.CHECKPOINT_FILE_PATH", CHECKPOINT_FILE,
     ]
 
-    #result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False)
 
     preds = torch.from_numpy(np.load(os.path.join(output_dir, "preds.npy")))
     #preds = torch.from_numpy(np.load("/fs/vulcan-projects/fsh_track/will/clipping3_preds/preds.npy"))
@@ -126,8 +127,8 @@ def main():
     visualize_matrix(
         ground_truth_path = "/fs/vulcan-projects/fsh_track/raw_data/box/CirclingAssayPGF2a_NoseBlockVsShamVsCNG_202505-202509_CGP/2025-05-22_Pi14_TankA1-1_Run1_ShamNoseblockFemalePGF2a_Circling/BORISAnnotations.tsv",
         pred_matrix=preds.T,
-        threshold=.95,
-        thresholds= [0.91,0.93,0.74,0.97,0.83,0.85],
+        threshold=.5,
+        #thresholds= [0.91,0.93,0.74,0.97,0.83,0.85],
         window_len=4,
         overlap_len=2,
         #video_window=(0, 2520),

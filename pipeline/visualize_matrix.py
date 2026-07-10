@@ -55,7 +55,9 @@ BEHAVIOR_MAP = {
 }
 
 # Default row order (alphabetical) when behavior_names is not supplied.
-DEFAULT_LABELS = ["Bite", "Lead", "Peck", "Quiver", "Run/Flee", "Tilt"]
+#DEFAULT_LABELS = ["Bite", "Lead", "Peck", "Quiver", "Run/Flee", "Tilt"]
+#DEFAULT_LABELS = ["Bite", "Chase/Charge", "Lead", "Peck", "Quiver", "Tilt"]
+DEFAULT_LABELS = ["Bite", "Chase/Charge", "Lead", "NoBehavior", "Peck", "Quiver", "Tilt"]
 
 # Used when visualize_matrix is called without an explicit video_window.
 VIDEO_WINDOW = (0.0, float("inf"))
