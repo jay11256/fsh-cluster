@@ -145,8 +145,13 @@ class BaseDataset(torch.utils.data.Dataset):
             label (int): the label of the current video.
             index (int): the index of the video.
         """
-        if self.cfg.TASK == 'few_shot' and type(index) is not int:
-            index, batch_label, sample_type = index
+        episode_classes = None
+        if self.cfg.TASK == 'few_shot' and not isinstance(index, int):
+            # Sampler yields (dataset_idx, episode_slot, sample_type[, episode_classes])
+            if len(index) == 4:
+                index, batch_label, sample_type, episode_classes = index
+            else:
+                index, batch_label, sample_type = index
         else:
             sample_type = ''
             batch_label = 0
@@ -172,8 +177,6 @@ class BaseDataset(torch.utils.data.Dataset):
                                     indices_to_take=index_select,
                                     cache_dir=(self.cfg.DATA.FRAME_CACHE_DIR
                                                if self.cfg.DATA.FRAME_CACHE_ENABLE else None))
-
-
 
         if self.cfg.DATA.USE_RAND_AUGMENT and self.mode in ["train"]:
             # Transform to PIL Image
@@ -296,6 +299,15 @@ class BaseDataset(torch.utils.data.Dataset):
         metadata['video_name'] = self._video_names[index]
         metadata['batch_label'] = batch_label
         metadata['sample_type'] = sample_type
+        if self.cfg.TASK == 'few_shot':
+            if episode_classes is None:
+                metadata['episode_classes'] = torch.full(
+                    (self.cfg.FEW_SHOT.N_WAY,), -1, dtype=torch.long
+                )
+            else:
+                metadata['episode_classes'] = torch.as_tensor(
+                    episode_classes, dtype=torch.long
+                )
 
 
         if self.cfg.DATA.BOTH_DIRECTION:

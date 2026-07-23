@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=ds12_04_sweep
+#SBATCH --job-name=multifewshotds12
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:rtxa6000:1
@@ -7,9 +7,9 @@
 #SBATCH --account=nexus
 #SBATCH --partition=tron
 #SBATCH --mem=64G
-#SBATCH --time=24:00:00
-#SBATCH --output=../trial_run_outputs/ds12_04_sweep.out
-#SBATCH --error=../trial_run_outputs/ds12_04_sweep.out
+#SBATCH --time=12:00:00
+#SBATCH --output=../trial_run_outputs/multifewshotds12_%j.out
+#SBATCH --error=../trial_run_outputs/multifewshotds12_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE
@@ -58,19 +58,19 @@ case $PT_DATA in
 		# first epoch, or ahead of time with tools/dump_frame_cache.py.
 		# Respects a pre-exported FRAME_CACHE_DIR (e.g. from an ablation
 		# script) instead of always overwriting it.
-		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_02none}
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds11none}
         ;;
     "trokens")
 		POINT_INFO_ENABLE=True
         TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
 		export NUM_POINTS_TO_SAMPLE=256
-		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_2trokens}
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds11trokens}
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_04"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_04_leave3"
 		export NUM_POINTS_TO_SAMPLE=18
-		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_4sam3}
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_4sam3_leave3_data_num_frames16}
         ;;
 esac
 
@@ -82,16 +82,15 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds12_04_sweep
-# export EXP_NAME=${EXP_NAME:-ds11_bsri}
+export EXP_NAME=${EXP_NAME:-ds12_leaveout_wlamo}
 # Default naming is unchanged from before (no CACHE_MODE suffix) so existing
 # AUTO_RESUME checkpoints keep resolving to the same OUTPUT_DIR. Callers that
 # want cache/nocache runs kept separate (e.g. the cache ablation) should
 # export SECONDARY_EXP_NAME themselves before invoking this script.
 export SECONDARY_EXP_NAME=${SECONDARY_EXP_NAME:-"${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"}
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset12_02
-export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models/
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset12_04_leave3
+export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=7
 export FILTER_ONE=True
@@ -123,7 +122,7 @@ export POINT_INFO_NAME="cotracker3_bip_fr_32"
 export WANDB_ID="${EXP_NAME}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}_"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 
 
-#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/models/ds6/5_way-3_shot-sam3-both/checkpoints/checkpoint_best.pyth
+#export CHECKPOINT_FILE=/fs/vulcan-projects/fsh_track/will/scratch/ds12_04_wlamo/5_way-3_shot-sam3-both/checkpoints/checkpoint_epoch_00050.pyth
 
 mkdir -p $OUTPUT_DIR
 
@@ -156,8 +155,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TRAIN.ENABLE $TRAIN_ENABLE \
     TEST.ENABLE $TEST_ENABLE \
 	DATA_LOADER.FILTER_ONE $FILTER_ONE \
-	MODEL.NUM_CLASSES $NUM_CLASSES \
-	NUM_FRAMES: 8 \
+	MODEL.NUM_CLASSES $NUM_CLASSES 
 	#TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 
 	
