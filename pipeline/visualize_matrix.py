@@ -523,9 +523,15 @@ def _load_ground_truth(path: str, video_window: tuple):
     time_col = col_map.get("time") or next(
         (c for c in gt.columns if "time" in c.lower()), None
     )
+    # 'Behavior' must win over 'Behavior type': in BORIS's aggregated-events
+    # export both columns exist, and 'Behavior type' is the event-type flag
+    # (always "POINT"), not the label. Preferring it silently parsed those files
+    # to zero real events -- three ~1hr recordings (1771 annotations) looked
+    # empty and were excluded from every experiment because of it. Files that
+    # only have 'Behavior' are unaffected by the reordering.
     beh_col  = (
-        col_map.get("behavior type")
-        or col_map.get("behavior")
+        col_map.get("behavior")
+        or col_map.get("behavior type")
         or next((c for c in gt.columns if "behavior" in c.lower()), None)
     )
     if time_col is None or beh_col is None:

@@ -1,16 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=sam3pklds10
+#SBATCH --job-name=sam3pklds12_04_leave3
 #SBATCH --gres=gpu:rtxa5000:1
 #SBATCH --qos=scavenger
 #SBATCH --account=scavenger
 #SBATCH --partition=scavenger
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=2:00:00
+#SBATCH --time=4:00:00
 #SBATCH --array=0-99
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
-#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pklds10_%A_%a.txt
-#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pklds810_%A_%a.txt
+#SBATCH --output=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pklds12_04_leave3_%A_%a.txt
+#SBATCH --error=/fs/vulcan-projects/fsh_track/bhargav/logs/sam3pklds12_04_leave3_%A_%a.txt
 
 # --mail-user=jliu1230@terpmail.umd.edu
 
@@ -21,9 +21,9 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate fsh
 
 
-VIDEO_DIR=../../../processed_data/dataset10
+VIDEO_DIR=../../../processed_data/dataset12_04_leave3
 SCRIPT=./run_sam3.py 
-OUT_DIR=../../../processed_data/sam3pklds10
+OUT_DIR=../../../processed_data/sam3pklds12_04_leave3 # make sure to create this dir!
 # ------------------------
 
 # Total number of splits = number of array jobs
