@@ -15,7 +15,7 @@ from trokens.datasets.multigrid_helper import ShortCycleBatchSampler
 
 from . import utils
 from .build import build_dataset
-from .custom_sampler import FewShotEpisodeSampler
+from .custom_sampler import FewShotEpisodeSampler, MultilabelFewShotEpisodeSampler
 
 # pylint: disable=protected-access
 def multiple_samples_collate(batch, fold=False):
@@ -117,13 +117,27 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
 
 
     # Construct the dataset
-
-    # UNCHANGED - -----uses default sampler instead of FewShotEpisodeSampler-----
-
     dataset = build_dataset(dataset_name, cfg, split)
 
-    # Fshdata uses standard batching for multi-label training, not few-shot episodes.
-    if dataset_name == 'Fshdata':
+    #logic, training and eval uses multilabel few shot sampler, testing uses default sampler
+    if cfg.TASK == 'few_shot' and split in ["train"]:
+        if cfg.DATA.MULTI_LABEL:
+            sampler = MultilabelFewShotEpisodeSampler(
+                dataset, cfg, split, less_iters
+            )
+            print('multilabel fewshot sampler!')
+        else:
+            sampler = FewShotEpisodeSampler(dataset, cfg, split, less_iters)
+            print('single label fewshot sampler!')
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_sampler=sampler,
+            num_workers=cfg.DATA_LOADER.NUM_WORKERS,
+            pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
+            worker_init_fn=utils.loader_worker_init_fn(dataset),
+        )
+        return loader
+    if split in ["test", "val"]:
         print('default sampler!')
         loader = torch.utils.data.DataLoader(
             dataset,
@@ -135,19 +149,6 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
             worker_init_fn=utils.loader_worker_init_fn(dataset),
         )
         return loader
-    
-    use_few_shot_sampler = cfg.TASK == 'few_shot' and dataset_name != 'Fshdata'
-    if use_few_shot_sampler:
-        sampler = FewShotEpisodeSampler(dataset, cfg, split, less_iters)
-        loader = torch.utils.data.DataLoader(
-            dataset,
-            batch_sampler=sampler,
-            num_workers=cfg.DATA_LOADER.NUM_WORKERS,
-            pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
-            worker_init_fn=utils.loader_worker_init_fn(dataset),
-        )
-        return loader
-
     if isinstance(dataset, torch.utils.data.IterableDataset):
         loader = torch.utils.data.DataLoader(
             dataset,
