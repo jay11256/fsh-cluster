@@ -625,6 +625,10 @@ _C.MULTIGRID.DEFAULT_S = 0
 # ---------------------------------------------------------------------------- #
 # Few shot options
 # ---------------------------------------------------------------------------- #
+# Turns on multi label few shot sampler instead of normal few shot sampler
+#_C.FEW_SHOT.MULTI_LABEL_ENABLE = True
+# Use only pure class examples for support building 
+#_C.FEW_SHOT.PURE_SUPPORTS = True
 
 
 _C.DEBUG = False

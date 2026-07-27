@@ -7,9 +7,9 @@
 #SBATCH --account=nexus
 #SBATCH --partition=tron
 #SBATCH --mem=64G
-#SBATCH --time=12:00:00
-#SBATCH --output=../trial_run_outputs/multifewshotds12_%j.out
-#SBATCH --error=../trial_run_outputs/multifewshotds12_%j.out
+#SBATCH --time=6:00:00
+#SBATCH --output=../trial_run_outputs/puremultifewshotds12_%j.out
+#SBATCH --error=../trial_run_outputs/puremultifewshotds12_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE
@@ -82,7 +82,7 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=${EXP_NAME:-ds12_leaveout_wlamo}
+export EXP_NAME=${EXP_NAME:-ds12_puresupports_leaveout_wlamo}
 # Default naming is unchanged from before (no CACHE_MODE suffix) so existing
 # AUTO_RESUME checkpoints keep resolving to the same OUTPUT_DIR. Callers that
 # want cache/nocache runs kept separate (e.g. the cache ablation) should
@@ -155,7 +155,8 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
     TRAIN.ENABLE $TRAIN_ENABLE \
     TEST.ENABLE $TEST_ENABLE \
 	DATA_LOADER.FILTER_ONE $FILTER_ONE \
-	MODEL.NUM_CLASSES $NUM_CLASSES 
+	MODEL.NUM_CLASSES $NUM_CLASSES \
+	#FEW_SHOT.PURE_SUPPORTS TRUE
 	#TEST.CHECKPOINT_FILE_PATH $CHECKPOINT_FILE
 
 	

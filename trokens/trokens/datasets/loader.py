@@ -119,8 +119,14 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
     # Construct the dataset
     dataset = build_dataset(dataset_name, cfg, split)
 
-    #logic, training and eval uses multilabel few shot sampler, testing uses default sampler
-    if cfg.TASK == 'few_shot' and split in ["train"]:
+    #logic, training uses few-shot episode sampler unless FEW_SHOT.DISABLE;
+    # testing / eval (and disabled few-shot) use the default sampler
+    use_few_shot_sampler = (
+        cfg.TASK == 'few_shot'
+        and split in ["train"]
+        and not cfg.FEW_SHOT.DISABLE
+    )
+    if use_few_shot_sampler:
         if cfg.DATA.MULTI_LABEL:
             sampler = MultilabelFewShotEpisodeSampler(
                 dataset, cfg, split, less_iters
@@ -137,11 +143,14 @@ def construct_loader(cfg, split, is_precise_bn=False, less_iters=False):
             worker_init_fn=utils.loader_worker_init_fn(dataset),
         )
         return loader
-    if split in ["test", "val"]:
+    if split in ["test", "val"] or (
+        cfg.TASK == 'few_shot' and cfg.FEW_SHOT.DISABLE and split == "train"
+    ):
         print('default sampler!')
         loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=batch_size,
+            shuffle=(split == "train"),
             num_workers=cfg.DATA_LOADER.NUM_WORKERS,
             pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
             drop_last=drop_last,

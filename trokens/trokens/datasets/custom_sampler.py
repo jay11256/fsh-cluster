@@ -100,7 +100,9 @@ class MultilabelFewShotEpisodeSampler(Sampler):
       3. For each episode class, sample K support + Q query examples that are
          positive for that class from the closed pool, without replacement
          across the episode.
-      4. Each yielded item is
+      4. If FEW_SHOT.PURE_SUPPORTS is True, supports must be single-label
+         (exactly one positive class). Queries may still be multilabel.
+      5. Each yielded item is
          (dataset_index, episode_slot, sample_type, episode_class_ids)
          so supports can later contribute to every episode class they are
          positive for.
@@ -116,6 +118,7 @@ class MultilabelFewShotEpisodeSampler(Sampler):
         self.mode = mode
         self.less_iters = less_iters
         self.max_retries = max_retries
+        self.pure_supports = bool(cfg.FEW_SHOT.PURE_SUPPORTS)
 
         self.label_sets = [_as_label_set(label) for label in dataset._labels]
         all_classes = set()
@@ -129,8 +132,7 @@ class MultilabelFewShotEpisodeSampler(Sampler):
             cfg.FEW_SHOT.TRAIN_QUERY_PER_CLASS if mode == 'train'
             else cfg.FEW_SHOT.TEST_QUERY_PER_CLASS
         )
-        self.samples_per_class = self.num_support + self.num_queries
-        self.batch_size = self.num_way * self.samples_per_class
+        self.batch_size = self.num_way * (self.num_support + self.num_queries)
 
         self.class_indices = {
             class_id: [
@@ -152,34 +154,57 @@ class MultilabelFewShotEpisodeSampler(Sampler):
             if self.label_sets[idx] and self.label_sets[idx].issubset(selected_set)
         ]
 
+    def _pure_pool(self, class_id):
+        """Indices whose only positive label is class_id."""
+        return [
+            idx for idx in self.class_indices[class_id]
+            if self.label_sets[idx] == {class_id}
+        ]
+
     def _sample_episode(self):
         selected_classes = random.sample(self.class_ids, self.num_way)
         selected_set = set(selected_classes)
         episode_classes = np.asarray(selected_classes, dtype=np.int64)
 
-        pools = {}
+        query_pools = {}
+        support_pools = {}
         for class_id in selected_classes:
-            pool = self._closed_pool(class_id, selected_set)
-            if len(pool) < self.samples_per_class:
+            query_pools[class_id] = self._closed_pool(class_id, selected_set)
+            if self.pure_supports:
+                support_pools[class_id] = self._pure_pool(class_id)
+            else:
+                support_pools[class_id] = query_pools[class_id]
+
+            if (len(support_pools[class_id]) < self.num_support
+                    or len(query_pools[class_id]) < self.num_support + self.num_queries):
                 return None
-            pools[class_id] = pool
 
         used = set()
         batch_indices = []
         sample_types = []
         batch_labels = []
 
+        # Sample supports first so PURE_SUPPORTS can restrict that pool only.
         for slot, class_id in enumerate(selected_classes):
-            available = [idx for idx in pools[class_id] if idx not in used]
-            if len(available) < self.samples_per_class:
+            available = [idx for idx in support_pools[class_id] if idx not in used]
+            if len(available) < self.num_support:
                 return None
-            chosen = random.sample(available, self.samples_per_class)
-            used.update(chosen)
-            for j, idx in enumerate(chosen):
+            chosen_supports = random.sample(available, self.num_support)
+            used.update(chosen_supports)
+            for idx in chosen_supports:
                 batch_indices.append(idx)
-                sample_types.append(
-                    'support' if j < self.num_support else 'query'
-                )
+                sample_types.append('support')
+                batch_labels.append(slot)
+
+        for slot, class_id in enumerate(selected_classes):
+            available = [idx for idx in query_pools[class_id] if idx not in used]
+            if len(available) < self.num_queries:
+                return None
+            chosen_queries = random.sample(available, self.num_queries)
+            used.update(chosen_queries)
+            for idx in chosen_queries:
+                batch_indices.append(idx)
+                sample_types.append('query')
                 batch_labels.append(slot)
 
         order = list(range(len(batch_indices)))
@@ -207,7 +232,8 @@ class MultilabelFewShotEpisodeSampler(Sampler):
             if episode is None:
                 raise RuntimeError(
                     "Failed to sample a closed multilabel few-shot episode. "
-                    "Try reducing N_WAY / K_SHOT / queries, or check label coverage."
+                    "Try reducing N_WAY / K_SHOT / queries, disabling "
+                    "PURE_SUPPORTS, or check label coverage."
                 )
             for i in range(0, len(episode), self.batch_size):
                 yield episode[i:i + self.batch_size]

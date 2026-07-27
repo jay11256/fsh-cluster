@@ -299,7 +299,7 @@ class BaseDataset(torch.utils.data.Dataset):
         metadata['video_name'] = self._video_names[index]
         metadata['batch_label'] = batch_label
         metadata['sample_type'] = sample_type
-        if self.cfg.TASK == 'few_shot':
+        if self.cfg.TASK == 'few_shot' and not self.cfg.FEW_SHOT.DISABLE:
             if episode_classes is None:
                 metadata['episode_classes'] = torch.full(
                     (self.cfg.FEW_SHOT.N_WAY,), -1, dtype=torch.long

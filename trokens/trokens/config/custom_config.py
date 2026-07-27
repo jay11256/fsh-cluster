@@ -30,6 +30,13 @@ def add_custom_config(cfg):
     cfg.FEW_SHOT.TRAIN_OG_EPISODES = False
     cfg.FEW_SHOT.CLASS_LOSS_LAMBDA = 1.0
     cfg.FEW_SHOT.Q2S_LOSS_LAMBDA = 1.0
+    # Use MultilabelFewShotEpisodeSampler instead of the single-label sampler.
+    cfg.FEW_SHOT.MULTI_LABEL_ENABLE = False
+    # If True, support examples must have exactly one positive label.
+    cfg.FEW_SHOT.PURE_SUPPORTS = False
+    # If True, skip episodic few-shot training (no episode sampler / Q2S loss)
+    # and train with standard classification loss + default dataloader.
+    cfg.FEW_SHOT.DISABLE = False
 
     # point info config
     cfg.POINT_INFO = CfgNode()

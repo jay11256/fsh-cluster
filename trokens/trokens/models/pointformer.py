@@ -505,7 +505,7 @@ class Pointformer(nn.Module):
 
         x = self.head(x)
         # previously there was a softmax here for validation which messed up the loss computation
-        if self.cfg.TASK == 'few_shot':
+        if self.cfg.TASK == 'few_shot' and not self.cfg.FEW_SHOT.DISABLE:
             return x, patch_x
         return x
 

@@ -247,29 +247,37 @@ def train_epoch(
             classfication_loss = cls_loss_fun(preds, labels)
             loss_dict = {'classfication_loss': classfication_loss}
 
-            if patch_tokens is None:
-                raise RuntimeError(
-                    "Few-shot training requires patch tokens from the model. "
-                    "Ensure cfg.TASK == 'few_shot'."
+            use_few_shot = not cfg.FEW_SHOT.DISABLE
+            if use_few_shot:
+                if patch_tokens is None:
+                    raise RuntimeError(
+                        "Few-shot training requires patch tokens from the model. "
+                        "Ensure cfg.TASK == 'few_shot' and FEW_SHOT.DISABLE is False."
+                    )
+
+                patch_support_query_dict = support_query_split(
+                    patch_tokens, labels, meta
                 )
-
-            patch_support_query_dict = support_query_split(
-                patch_tokens, labels, meta
-            )
-            patch_q2s_logits = process_patch_tokens(
-                cfg,
-                patch_support_query_dict['support_preds'],
-                patch_support_query_dict['query_preds'],
-            )
-            patch_q2s_logits = patch_q2s_logits / cfg.SOLVER.TEMPRATURE
-            q2s_targets = patch_support_query_dict['query_episode_targets']
-            q2s_loss = q2s_loss_fun(patch_q2s_logits, q2s_targets)
-            loss_dict['q2s_loss'] = q2s_loss
-
-        loss = (
-            cfg.FEW_SHOT.CLASS_LOSS_LAMBDA * classfication_loss
-            + cfg.FEW_SHOT.Q2S_LOSS_LAMBDA * q2s_loss
-        )
+                patch_q2s_logits = process_patch_tokens(
+                    cfg,
+                    patch_support_query_dict['support_preds'],
+                    patch_support_query_dict['query_preds'],
+                )
+                patch_q2s_logits = patch_q2s_logits / cfg.SOLVER.TEMPRATURE
+                q2s_targets = patch_support_query_dict['query_episode_targets']
+                q2s_loss = q2s_loss_fun(patch_q2s_logits, q2s_targets)
+                loss_dict['q2s_loss'] = q2s_loss
+                loss = (
+                    cfg.FEW_SHOT.CLASS_LOSS_LAMBDA * classfication_loss
+                    + cfg.FEW_SHOT.Q2S_LOSS_LAMBDA * q2s_loss
+                )
+            else:
+                loss = classfication_loss
+                loss_dict['q2s_loss'] = torch.zeros(
+                    (), device=classfication_loss.device
+                )
+                patch_q2s_logits = None
+                q2s_targets = None
 
         misc.check_nan_losses(loss)
         optimizer.zero_grad()
@@ -290,7 +298,10 @@ def train_epoch(
         classification_loss = loss_dict['classfication_loss']
         q2s_loss_val = loss_dict['q2s_loss']
         iter_f1 = metrics.multilabel_f1(preds, labels)
-        iter_q2s_f1 = metrics.multilabel_f1(patch_q2s_logits, q2s_targets)
+        if use_few_shot:
+            iter_q2s_f1 = metrics.multilabel_f1(patch_q2s_logits, q2s_targets)
+        else:
+            iter_q2s_f1 = torch.zeros((), device=preds.device)
 
         if cfg.NUM_GPUS > 1:
             classification_loss, q2s_loss_val, iter_f1, iter_q2s_f1 = du.all_reduce(
@@ -310,11 +321,12 @@ def train_epoch(
         global_iter = data_size * cur_epoch + cur_iter
         wandb_iter_dict = {
             'iter_cls_loss': classification_loss,
-            'iter_q2s_loss': q2s_loss_val,
             'iter_f1': iter_f1_val,
-            'iter_q2s_f1': iter_q2s_f1_val,
             'iteration': global_iter,
         }
+        if use_few_shot:
+            wandb_iter_dict['iter_q2s_loss'] = q2s_loss_val
+            wandb_iter_dict['iter_q2s_f1'] = iter_q2s_f1_val
         if wandb_run:
             wandb_run.log(wandb_iter_dict)
 
@@ -334,11 +346,12 @@ def train_epoch(
 
     wandb_epoch_dict = {
         'train_cls_loss': np.mean(epoch_cls_loss),
-        'train_q2s_loss': np.mean(epoch_q2s_loss),
         'train_f1': np.mean(epoch_f1),
-        'train_q2s_f1': np.mean(epoch_q2s_f1),
         'epoch': cur_epoch,
     }
+    if not cfg.FEW_SHOT.DISABLE:
+        wandb_epoch_dict['train_q2s_loss'] = np.mean(epoch_q2s_loss)
+        wandb_epoch_dict['train_q2s_f1'] = np.mean(epoch_q2s_f1)
     if wandb_run:
         wandb_run.log(wandb_epoch_dict)
 
