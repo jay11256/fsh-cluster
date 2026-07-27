@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=multifewshotds12
+#SBATCH --job-name=multifewshotds12_06
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --gres=gpu:rtxa6000:1
@@ -8,8 +8,8 @@
 #SBATCH --partition=tron
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
-#SBATCH --output=../trial_run_outputs/multifewshotds12_%j.out
-#SBATCH --error=../trial_run_outputs/multifewshotds12_%j.out
+#SBATCH --output=../trial_run_outputs/multifewshotds12_06_%j.out
+#SBATCH --error=../trial_run_outputs/multifewshotds12_06_%j.out
 #SBATCH --mail-type=BEGIN,END,TIME_LIMIT
 
 # ''' USAGE
@@ -68,9 +68,9 @@ case $PT_DATA in
         ;;
     "sam3")
 		POINT_INFO_ENABLE=True 
-        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_04_leave3"
+        TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_06"
 		export NUM_POINTS_TO_SAMPLE=18
-		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_4sam3_leave3_data_num_frames16}
+		export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_06_5x5}
         ;;
 esac
 
@@ -82,14 +82,14 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=${EXP_NAME:-ds12_leaveout_wlamo}
+export EXP_NAME=${EXP_NAME:-ds12_06_fewshot}
 # Default naming is unchanged from before (no CACHE_MODE suffix) so existing
 # AUTO_RESUME checkpoints keep resolving to the same OUTPUT_DIR. Callers that
 # want cache/nocache runs kept separate (e.g. the cache ablation) should
 # export SECONDARY_EXP_NAME themselves before invoking this script.
 export SECONDARY_EXP_NAME=${SECONDARY_EXP_NAME:-"${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"}
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
-export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset12_04_leave3
+export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset12_06
 export BASE_OUTPUT_DIR=/fs/vulcan-projects/fsh_track/models
 export OUTPUT_DIR=$BASE_OUTPUT_DIR/$EXP_NAME/$SECONDARY_EXP_NAME
 export NUM_CLASSES=7
