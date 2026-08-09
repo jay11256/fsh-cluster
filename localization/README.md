@@ -1,101 +1,112 @@
-# localization
+# FishFormer
 
-Temporal action localization for cichlid social behavior — the models that turn
-the Trokens feature stream into timestamped behavior detections.
+Anchor-free temporal action localization for cichlid social behavior.
 
-Three models share this directory, in the order they were built:
+FishFormer takes a Trokens feature stream over a full ~60-minute recording and
+predicts *timestamped behavior spans* — it regresses span boundaries directly
+rather than deriving them by thresholding an actionness curve. A dilated-conv +
+transformer trunk feeds three 1-D CNN heads emitting per-timestep class logits,
+centerness, and binned distance-to-boundary offsets (FCOS/ActionFormer-style
+detection with TriDet-style distributional regression).
 
-| model | files | what it does |
-|---|---|---|
-| **FishTAL** | `model.py` (`FishTAL`), `train.py` | dense per-timestep classification + an actionness curve; spans come from thresholding that curve |
-| **FishPoint** | `point_model.py`, `train_point.py` | predicts event *points* with a sub-stride offset, scored by point-AP instead of tIoU |
-| **FishFormer** | `former.py`, `train_former.py` | anchor-free detector that *regresses* span boundaries (FCOS/ActionFormer-style, TriDet-style binned offsets) — the main model |
+Behaviors are annotated in BORIS as *point* events — a single timestamp, not a
+start/end — so the true extent is unknown even to the annotator. Predicting a
+distribution over each offset rather than a point estimate is therefore matched
+to what the annotation actually supports, and is the design choice the model is
+built around.
 
-`model.py` also holds `TemporalBlock` and `DilatedTemporalConv`, which
-`former.py` and `point_model.py` both import, so the three are one module graph
-rather than three independent codebases.
+**The model is single-scale, deliberately.** Earlier versions carried the
+4-level feature pyramid (strides 1/2/4/8) that ActionFormer and TriDet use, on
+the reasoning that behaviors of differing duration should be owned by different
+scales. That does not apply here: supervision is a BORIS point expanded to a
+fixed `span_s` box, so every ground-truth segment is exactly the same width and
+only the finest level ever receives a positive assignment. Measured on 64 real
+training windows, level 0 got 7,323 positives and levels 1/2/3 got 0/0/0 — 5.3M
+parameters, 25% of the model, trained solely to emit background, whose
+untrained predictions then had to be suppressed by NMS. Dropping them is a
+strict simplification: the set of supervised positions is bit-for-bit
+unchanged. A pyramid would be worth revisiting if the annotations ever carried
+real, varying durations.
 
 ## Layout
 
 ```
-former.py                     FishFormer: pyramid, shared 1-D CNN heads, DFL boundary regression
-train_former.py               training loop, window dataset, target assignment, decode + mAP eval
-model.py                      FishTAL + the shared TemporalBlock / DilatedTemporalConv
-train.py                      FishTAL training; also _nms, reused by every decode script
-point_model.py                FishPoint model + loss
-train_point.py                FishPoint training and point-AP evaluation
-data.py                       feature-bank loading, BORIS annotation parsing, fold definitions
+fishformer/                 the model and its training/eval code
+├── former.py               FishFormer, FishFormerLoss, CrossMotionLite
+├── blocks.py               TemporalBlock, DilatedTemporalConv (Trokens-parameterised)
+├── nms.py                  temporal NMS over scored spans
+├── data.py                 feature-bank loading, BORIS parsing, fold definitions
+└── train_former.py         window dataset, target assignment, decode, mAP eval, CLI
 
-confusion_matrix_fishformer.py  per-class confusion (single-label and multi-label)
-decode_variants.py              class-agnostic vs class-specific NMS, multilabel vs argmax
-dump_former_spans.py            span dumps from a fresh training run
-dump_former_spans_from_ckpt.py  span dumps from saved per-recording fold checkpoints
-measure_span_len.py             predicted-span duration distribution
-nested_threshold_sweep.py       non-leaky cross-validated operating-threshold selection
-sweep_cand_thresh.py            candidate-generation threshold sweep
-sweep_inference.py              FishTAL decode sweep
-sweep_point_decode.py           FishPoint decode sweep
-plot_former_boxes.py            prediction-vs-GT timeline figures
+analysis/                   post-hoc studies, all run on saved checkpoints
+├── dump_former_spans.py            span dumps from a fresh training run
+├── dump_former_spans_from_ckpt.py  span dumps from saved per-fold checkpoints
+├── decode_variants.py              class-agnostic vs class-specific NMS; multilabel vs argmax
+├── sweep_cand_thresh.py            candidate-generation threshold sweep
+├── nested_threshold_sweep.py       non-leaky CV selection of the operating threshold
+├── measure_span_len.py             predicted-span duration distribution
+├── confusion_matrix_fishformer.py  per-class confusion, single- and multi-label
+└── plot_former_boxes.py            prediction-vs-ground-truth timeline figures
 
-run_*.sbatch                  SLURM launchers; one per experiment (see below)
+slurm/                      one launcher per experiment
 ```
 
-Source only — the result records these scripts read and write (`fishtal_results.json`,
-`point_results.json`, the per-sweep JSONs, and the `winsweep/` and `nopyr/`
-per-fold outputs) are not tracked here. Scripts create them on first run.
+Source only. Checkpoints, span dumps, figures, logs and result JSONs are
+generated at run time into the repository root (`checkpoints/`, `span_dumps/`,
+`box_viz/`, `logs/`) and are not tracked — see the repo `.gitignore`.
 
 ## Running
 
-Everything is launched through SLURM. The main 5-fold FishFormer run is:
+Everything is launched from this directory, with SLURM scripts referenced by
+path so the working directory is unambiguous:
 
 ```bash
-sbatch run_former_5fold_ckpt.sbatch     # array 0-4, one fold per task, --save-ckpt
+mkdir -p logs
+sbatch slurm/run_former_5fold_ckpt.sbatch     # the main result: array 0-4, one fold per task
 ```
 
-which trains leave-one-recording-out within each fold and appends per-fold
+That trains leave-one-recording-out within each of 5 folds and appends per-fold
 results to `fishtal_results.json`. Ablations follow the same pattern:
 
-| script | ablation |
+| launcher | ablation |
 |---|---|
-| `run_former_5fold_nopyramid.sbatch`, `run_nopyramid_5fold.sbatch` | `--n-levels 1` (single scale) |
-| `run_window_sweep.sbatch`, `run_window_sweep_small.sbatch` | context window ∈ {8, 15, 30, 45, 180}s vs the default 90s |
-| `run_former_5fold_neural_ckpt.sbatch` | neural (vs few-shot) Trokens backbone |
+| `run_window_sweep.sbatch`, `run_window_sweep_small.sbatch` | context window ∈ {8, 15, 30, 45, 180}s against the default 90s |
+| `run_former_5fold_neural_ckpt.sbatch` | neural rather than few-shot Trokens backbone |
 | `run_former_5fold_none_ckpt.sbatch` | with curated hard-negative windows |
 
-Post-hoc analyses run on the saved checkpoints without retraining
+The analyses reuse saved checkpoints and retrain nothing
 (`run_dump_from_ckpt.sbatch`, `run_decode_variants.sbatch`,
 `run_sweep_cand_thresh.sbatch`, `run_confusion_matrix.sbatch`).
+`analysis/nested_threshold_sweep.py` is CPU-only and reads span dumps directly.
 
-`nested_threshold_sweep.py` is CPU-only and reads the span dumps directly.
+To train outside SLURM, the package is a module:
 
-## External dependencies
+```bash
+python -m fishformer.train_former --fold <recording> --feature-mode ds12_06_5fold_fold0 \
+    --window-s 90 --span-s 4 --reg-bins 16 --epochs 100
+```
 
-These are imported by absolute path and are **not** in this directory:
+## Dependencies
+
+Python with PyTorch, NumPy, scikit-learn and Matplotlib, plus three modules
+outside this directory:
 
 | module | location | needed by |
 |---|---|---|
-| `visualize_matrix` | `../pipeline/` (this repo) | every mAP/decode script |
-| `trokens.models.{common,attention}` | `../trokens/` (this repo) | `model.py` (`Attention`, `Mlp`, `DropPath`) |
-| `data11make` | `/fs/vulcan-projects/fsh_track/will/will_files/dataset_gen` | `data.py` (BORIS annotation parsing) |
-| `point_ap` | `/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training` | `train_point.py` only |
+| `trokens.models.{common,attention}` | `../trokens/` (this repo) | `blocks.py` — `Attention`, `Mlp`, `DropPath` |
+| `visualize_matrix` | `../pipeline/` (this repo) | mAP helpers in training and every decode script |
+| `data11make` | dataset-generation tree, outside this repo | `data.py` — BORIS annotation parsing |
 
-Feature banks (`feats.npy`, 768-d Trokens features at 0.25 s stride, one
-directory per fold) live under
-`/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/`
-and are referenced by `FEATS_ROOT` in `data.py`. Annotations come from
-`/fs/vulcan-projects/fsh_track/raw_data/processed_ofure/pairs`.
+The two in-repo dependencies resolve relative to this file, so a clone works
+from any checkout path. The external ones, and the data locations, are
+environment-overridable:
 
-## Note on paths
+| variable | default | meaning |
+|---|---|---|
+| `FSH_TROKENS_ROOT` | `../trokens` | Trokens package root |
+| `FSH_DATASET_GEN` | absolute path to the dataset-generation tree | where `data11make` lives |
+| `FSH_PAIRS` | absolute path under `raw_data/processed_ofure` | BORIS annotation TSVs, one directory per recording |
 
-These files are a verbatim copy of the scripts as they were run, so they still
-contain absolute paths into the sandbox they ran from
-(`/fs/vulcan-projects/fsh_track/bhargav/sandboxes/fishtal`). Nothing has been
-rewritten, so what is published is exactly what produced the paper's results.
-To run from a clone, three things need repointing:
-
-1. `cd <path>` at the top of every `run_*.sbatch`
-2. `HERE` in `measure_span_len.py` (the only `.py` with the sandbox path hardcoded rather than derived from `__file__`)
-3. `FEATS_ROOT` / `PAIRS` in `data.py`, plus the two `sys.path.insert` lines above
-
-Model checkpoints (~13 GB), span dumps, box visualizations and SLURM logs are
-deliberately not tracked — see the repo `.gitignore`.
+Feature banks (`feats.npy`, 768-d Trokens features at a 0.25 s stride, one
+directory per fold) are named in `FEATS_ROOT` in `fishformer/data.py` and must
+be repointed to wherever they have been staged.
