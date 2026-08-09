@@ -1,3 +1,11 @@
 /pipeline/clips
 /pipeline/pkls
 /pipeline/testing_clips
+
+# localization: generated outputs, not source
+/localization/checkpoints
+/localization/span_dumps
+/localization/box_viz
+/localization/logs
+/localization/*.out
+/localization/__pycache__
