@@ -178,6 +178,27 @@ class BaseDataset(torch.utils.data.Dataset):
                                     cache_dir=(self.cfg.DATA.FRAME_CACHE_DIR
                                                if self.cfg.DATA.FRAME_CACHE_ENABLE else None))
 
+        # BLACK_FRAMES=1 blanks the pixels while leaving the point tracks intact,
+        # turning the backbone into a pure trajectory/geometry model.
+        #
+        # Note DINO on a black frame is NOT spatially constant -- measured patch
+        # -token std across the 256 patches is 1.04, higher than on a random
+        # frame (0.86), because DINOv2 adds positional embeddings internally. The
+        # ablation works for a different reason: every clip now yields the SAME
+        # feature map, so there is zero clip-to-clip appearance variation and the
+        # only thing distinguishing one clip from another is its point tracks.
+        # grid_sample at a tracked point therefore reads a position signature,
+        # not content, and HOD / cross-motion come straight from pred_tracks.
+        #
+        # Zeroing here, after decode, means no black clips need writing to disk
+        # and the frame cache stays valid for normal runs.
+        #
+        # MUST be set identically for backbone training AND the feature dump --
+        # a backbone trained on black frames but dumped on real ones is a
+        # train/test mismatch that will look like a bad result rather than a bug.
+        if os.environ.get("BLACK_FRAMES", "") in ("1", "True", "true"):
+            video = np.zeros_like(video)
+
         if self.cfg.DATA.USE_RAND_AUGMENT and self.mode in ["train"]:
             # Transform to PIL Image
             frames = [transforms.ToPILImage()(frame) for frame in video]

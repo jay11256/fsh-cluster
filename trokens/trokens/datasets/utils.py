@@ -127,7 +127,12 @@ def read_video(video_path, total_frames, indices_to_take=None, cache_dir=None):
     else:
         frames = np.concatenate([vr[i][None] for i in frames_to_take], axis=0)
 
-    if cache_path is not None:
+    # FRAME_CACHE_READONLY=1 reads existing cache entries but never writes new
+    # ones. The cache is keyed by (clip, total_frames, indices) alone, so a run
+    # over already-cached clips is a pure read and costs no disk; this flag makes
+    # that guarantee explicit for runs on a full filesystem, without giving up
+    # the ~8x decode speedup that disabling the cache entirely would cost.
+    if cache_path is not None and os.environ.get("FRAME_CACHE_READONLY", "") not in ("1", "True", "true"):
         _write_frame_cache(cache_path, frames)
     return frames
 
