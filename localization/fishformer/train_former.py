@@ -35,7 +35,7 @@ IOUS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 GT_DURATION = 4.0          # eval-only proxy box; overridden by --gt-window below
 
 
-def assign_targets(events, win_start, win_len, stride, span_s):
+def assign_targets(events, win_start, win_len, stride, span_s, multi_label=True):
     """Anchor-free assignment of point events to timesteps, single scale.
 
     A position is positive for an event when it lies strictly inside that
@@ -50,31 +50,79 @@ def assign_targets(events, win_start, win_len, stride, span_s):
     point expanded to a fixed box -- so max(left, right) is always in
     [span_s/2, span_s] and only the finest level ever qualified. See former.py's
     module docstring for the measurement.
+
+    OVERLAP. Events overlap constantly in this data -- 42.9% of positive
+    timesteps are claimed by more than one event -- so how a contested timestep
+    is resolved is not an edge case, and the two channels resolve it
+    differently on purpose:
+
+      cls  MULTI-HOT, (T, NUM_CLASSES). Every class covering a timestep is a
+           positive there. This has to be multi-hot because the head emits
+           independent per-class sigmoids and evaluation scores per-class AP:
+           with a single label, the 27.9% of positive timesteps covered by two
+           different classes would train one of those classes toward zero at a
+           timestep where it is genuinely present. Background is its own
+           channel, hot only where nothing covers.
+
+      reg/ctr  ONE event wins -- the one whose CENTRE is nearest, since a
+           timestep can only regress to one pair of boundaries. `left`/`right`
+           and the centerness derived from them are only written where this
+           event beats the incumbent. Nearest-centre is the fixed-width
+           analogue of FCOS's min-area rule. Assigning by loop order instead
+           would not be arbitrary but systematically wrong: events arrive
+           time-sorted, so last-writer-wins always picks the event whose centre
+           lies further right, mis-assigning 26.3% of positive timesteps and
+           zeroing centerness at exactly the timesteps that should peak.
+
+    `multi_label=False` is the ABLATION control: one class per timestep, namely
+    the nearest-centre event's -- the same event that already owns reg/ctr. It
+    deliberately does NOT reproduce the historical last-writer-wins bug, because
+    that would confound two changes at once (which class wins, and whether
+    co-occurring classes are also positive). Holding the winner fixed at
+    nearest-centre isolates multi-label supervision as the single variable.
     """
     half = span_s / 2.0
     t_len = max(1, win_len)
-    cls_t = np.full(t_len, BG_INDEX, np.int64)
+    cls_t = np.zeros((t_len, NUM_CLASSES), np.float32)
     reg_t = np.zeros((t_len, 2), np.float32)
     ctr_t = np.zeros(t_len, np.float32)
     pos = np.zeros(t_len, bool)
+    best = np.full(t_len, np.inf, np.float32)   # distance to the winner's centre
+    idx = np.arange(t_len, dtype=np.float32) * stride
 
     for t_abs, c in events:
         t_rel = t_abs - win_start * stride          # seconds into window
         s, e = t_rel - half, t_rel + half
-        idx = np.arange(t_len, dtype=np.float32) * stride
         left = (idx - s) / stride                    # distance in steps
         right = (e - idx) / stride
         fits = (left > 0) & (right > 0)
         if not fits.any():
             continue
-        cls_t[fits] = c
-        reg_t[fits, 0] = left[fits]
-        reg_t[fits, 1] = right[fits]
-        # centerness: 1 at the event centre, decaying toward the edges
-        ctr_t[fits] = np.sqrt(
-            np.minimum(left[fits], right[fits]) /
-            np.maximum(np.maximum(left[fits], right[fits]), 1e-6))
         pos |= fits
+
+        # regression/centerness go to the nearest-centre event only
+        dist = np.abs(idx - t_rel)
+        wins = fits & (dist < best)
+        best[wins] = dist[wins]
+
+        if multi_label:
+            cls_t[fits, c] = 1.0
+        else:
+            # single-label control: the nearest-centre event owns the label too,
+            # so it replaces whatever earlier event held this timestep. `best`
+            # starts at inf, so the first event to cover a timestep always wins
+            # it -- no positive timestep is left without a class.
+            cls_t[wins] = 0.0
+            cls_t[wins, c] = 1.0
+
+        reg_t[wins, 0] = left[wins]
+        reg_t[wins, 1] = right[wins]
+        # centerness: 1 at the event centre, decaying toward the edges
+        ctr_t[wins] = np.sqrt(
+            np.minimum(left[wins], right[wins]) /
+            np.maximum(np.maximum(left[wins], right[wins]), 1e-6))
+
+    cls_t[~pos, BG_INDEX] = 1.0
     return [{"cls": cls_t, "reg": reg_t, "ctr": ctr_t, "pos": pos}]
 
 
@@ -91,10 +139,12 @@ class FormerWindows(Dataset):
     """
 
     def __init__(self, recordings, feature_mode, window_s, span_s,
-                 train=True, windows_per_rec=64, seed=0, none_ratio=0.0):
+                 train=True, windows_per_rec=64, seed=0, none_ratio=0.0,
+                 multi_label=True):
         self.stride = STRIDE[feature_mode]
         self.win = int(round(window_s / self.stride))
         self.span_s = span_s
+        self.multi_label = multi_label
         self.train = train
         self.rng = np.random.RandomState(seed)
         self.recs = []
@@ -138,7 +188,8 @@ class FormerWindows(Dataset):
                 [feats, np.zeros((self.win - feats.shape[0], *feats.shape[1:]), np.float32)])
         t0, t1 = start * self.stride, (start + self.win) * self.stride
         ev = [(t, c) for t, c in r["events"] if t0 <= t < t1]
-        tg = assign_targets(ev, start, self.win, self.stride, self.span_s)
+        tg = assign_targets(ev, start, self.win, self.stride, self.span_s,
+                            multi_label=self.multi_label)
         out = {"feats": torch.from_numpy(feats)}
         for lvl, t in enumerate(tg):
             out[f"cls{lvl}"] = torch.from_numpy(t["cls"])
@@ -150,7 +201,26 @@ class FormerWindows(Dataset):
 
 @torch.no_grad()
 def predict_spans(model, name, args, device):
-    """Decode boundary-regressed spans over a full recording."""
+    """Decode spans over a full recording.
+
+    Two ablation switches live here rather than only in the loss, because
+    zeroing a loss weight does NOT remove a component -- it leaves an UNTRAINED
+    head that the decode still consumes, so the measurement would be
+    untrained-head noise rather than the component's absence:
+
+      --no-ctr-score     drop the sigmoid(ctr) factor from the score. Paired
+                         with lamb_ctr=0 this is a real "no centerness head"
+                         ablation; without it, an untrained centerness head
+                         still gates every score.
+      --fixed-box-decode emit a fixed +-span_s/2 box at each firing timestep
+                         instead of the regressed boundaries. Paired with
+                         lamb_reg=0 this asks the question the paper's premise
+                         rests on: does LEARNED boundary regression beat simply
+                         stamping a constant-width box wherever the classifier
+                         fires? Without it, lamb_reg=0 would just decode
+                         garbage boundaries from an untrained head and
+                         overstate regression's value.
+    """
     model.eval()
     feats, events = load_recording(name, args.feature_mode)
     stride = STRIDE[args.feature_mode]
@@ -171,7 +241,9 @@ def predict_spans(model, name, args, device):
         outs = model(torch.from_numpy(chunk).unsqueeze(0).to(device))
         for out in outs:
             lvl_stride = out["stride"]
-            scores = torch.sigmoid(out["cls"])[0] * torch.sigmoid(out["ctr"])[0].unsqueeze(-1)
+            scores = torch.sigmoid(out["cls"])[0]
+            if not getattr(args, "no_ctr_score", False):
+                scores = scores * torch.sigmoid(out["ctr"])[0].unsqueeze(-1)
             reg = out["reg"][0]
             sc = scores.cpu().numpy()
             rg = reg.cpu().numpy()
@@ -180,8 +252,11 @@ def predict_spans(model, name, args, device):
                 keep = np.flatnonzero(sc[:, c] >= args.score_thresh)
                 for k in keep:
                     centre = t_idx[k] * stride
-                    st = centre - rg[k, 0] * lvl_stride * stride
-                    en = centre + rg[k, 1] * lvl_stride * stride
+                    if getattr(args, "fixed_box_decode", False):
+                        st, en = centre - args.span_s / 2.0, centre + args.span_s / 2.0
+                    else:
+                        st = centre - rg[k, 0] * lvl_stride * stride
+                        en = centre + rg[k, 1] * lvl_stride * stride
                     if en > st:
                         raw[c].append((float(st), float(en), float(sc[k, c])))
     return {c: _nms(v, args.nms_iou)[:args.max_props] for c, v in raw.items()}, events, stride, n
@@ -233,7 +308,8 @@ def train_fold(test_rec, all_recs, args, device):
     train_recs = [r for r in all_recs if r != test_rec]
     ds = FormerWindows(train_recs, args.feature_mode, args.window_s, args.span_s,
                        windows_per_rec=args.windows_per_rec, seed=args.seed,
-                       none_ratio=args.none_ratio)
+                       none_ratio=args.none_ratio,
+                       multi_label=not args.single_label_cls)
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True,
                     num_workers=args.num_workers, drop_last=True)
     sample_feats = ds.recs[0]["feats"]
@@ -243,6 +319,7 @@ def train_fold(test_rec, all_recs, args, device):
                        depth=args.depth, num_heads=args.num_heads, drop=args.drop,
                        drop_path=args.drop_path,
                        reg_bins=args.reg_bins, spatial_pool=spatial_pool,
+                       mlp_ratio=args.mlp_ratio,
                        use_motion=args.use_motion).to(device)
     crit = FishFormerLoss(num_classes=NUM_CLASSES, bg_index=BG_INDEX,
                           lamb_cls=args.lamb_cls, lamb_reg=args.lamb_reg,
@@ -325,11 +402,37 @@ def main():
     p.add_argument("--label", default="FishFormer1")
     p.add_argument("--out", default=None,
                    help="default: fishtal_results.json (gt-window=4.0) or fishtal_results_gtw1.json (2.0)")
+    p.add_argument("--no-ctr-score", action="store_true",
+                   help="ABLATION: remove the centerness head -- drops the "
+                        "sigmoid(ctr) score factor AND forces --lamb-ctr 0")
+    p.add_argument("--fixed-box-decode", action="store_true",
+                   help="ABLATION: emit a fixed +-span_s/2 box instead of the "
+                        "regressed one AND forces --lamb-reg 0")
+    p.add_argument("--mlp-ratio", type=float, default=4.0,
+                   help="trunk MLP expansion. The MLP is ~45%% of all params "
+                        "(1.18M of 1.77M per block), so this is the largest "
+                        "single capacity lever in the model")
+    p.add_argument("--single-label-cls", action="store_true",
+                   help="ABLATION: one class per timestep (the nearest-centre event's) instead of multi-hot supervision of every covering class")
     p.add_argument("--save-ckpt", action="store_true",
                    help="save the best-epoch model weights per fold (train_former.py never did "
                         "this before -- needed for any post-hoc re-evaluation, e.g. per-class)")
     p.add_argument("--ckpt-dir", default=f"{HERE}/checkpoints")
     args = p.parse_args()
+
+    # Couple each removal flag to its loss weight here, once, rather than asking
+    # the caller to pass both. Removing a head means BOTH not training it and
+    # not consuming it at decode; passing only one of the two silently measures
+    # something else (an untrained head still gating scores, or garbage
+    # boundaries decoded from an untrained regressor), and that mistake would
+    # look like a normal result rather than a bug.
+    if args.no_ctr_score and args.lamb_ctr != 0.0:
+        print(f"--no-ctr-score: forcing --lamb-ctr {args.lamb_ctr} -> 0.0", flush=True)
+        args.lamb_ctr = 0.0
+    if args.fixed_box_decode and args.lamb_reg != 0.0:
+        print(f"--fixed-box-decode: forcing --lamb-reg {args.lamb_reg} -> 0.0", flush=True)
+        args.lamb_reg = 0.0
+
     if args.out is None:
         suffix = "" if args.gt_window == 4.0 else "_gtw1"
         args.out = f"{HERE}/fishtal_results{suffix}.json"

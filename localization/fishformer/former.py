@@ -77,7 +77,8 @@ class FishFormer(nn.Module):
     def __init__(self, feat_dim=768, num_classes=7, hidden=256, depth=4,
                  num_heads=8, drop=0.1, attn_drop=0.1, drop_path=0.1,
                  reg_bins=16, reg_max=64.0, max_len=4096,
-                 dilations=(1, 2, 4, 8), spatial_pool=False, use_motion=False):
+                 dilations=(1, 2, 4, 8), spatial_pool=False, use_motion=False,
+                 mlp_ratio=4.0):
         super().__init__()
         self.num_classes = num_classes
         self.reg_bins = reg_bins
@@ -105,8 +106,9 @@ class FishFormer(nn.Module):
 
         dpr = [x.item() for x in torch.linspace(0, drop_path, depth)]
         self.trunk = nn.ModuleList([
-            TemporalBlock(hidden, num_heads=num_heads, drop=drop,
-                          attn_drop=attn_drop, drop_path=dpr[i]) for i in range(depth)])
+            TemporalBlock(hidden, num_heads=num_heads, mlp_ratio=mlp_ratio,
+                          drop=drop, attn_drop=attn_drop,
+                          drop_path=dpr[i]) for i in range(depth)])
 
         self.norm = nn.LayerNorm(hidden)
 
@@ -214,20 +216,25 @@ class FishFormerLoss(nn.Module):
         return (1 - iou + centre / enclose.clamp(min=eps)).mean()
 
     def forward(self, outs, targets):
-        """targets: per level, dict of cls (B,T) long, reg (B,T,2), ctr (B,T), pos (B,T) bool."""
+        """targets: per level, dict of cls (B,T,C) multi-hot float, reg (B,T,2),
+        ctr (B,T), pos (B,T) bool.
+
+        `cls` arrives multi-hot from assign_targets -- a timestep covered by two
+        behaviors is positive for both -- which is what the per-class sigmoid
+        focal below expects. Background is a channel like any other, hot only
+        where nothing covers.
+        """
         total_cls = total_reg = total_ctr = 0.0
         n_pos_all = 0
         for out, tgt in zip(outs, targets):
             cls_logits, reg, ctr = out["cls"], out["reg"], out["ctr"]
-            b, t, c = cls_logits.shape
             cls_t, reg_t, ctr_t, pos = tgt["cls"], tgt["reg"], tgt["ctr"], tgt["pos"]
 
-            onehot = F.one_hot(cls_t.clamp(max=c - 1), c).float()
-            onehot[..., self.bg_index] = (cls_t == self.bg_index).float()
+            tgt_c = cls_t.float()
             p = torch.sigmoid(cls_logits)
-            ce = F.binary_cross_entropy_with_logits(cls_logits, onehot, reduction="none")
-            p_t = p * onehot + (1 - p) * (1 - onehot)
-            a_t = self.alpha * onehot + (1 - self.alpha) * (1 - onehot)
+            ce = F.binary_cross_entropy_with_logits(cls_logits, tgt_c, reduction="none")
+            p_t = p * tgt_c + (1 - p) * (1 - tgt_c)
+            a_t = self.alpha * tgt_c + (1 - self.alpha) * (1 - tgt_c)
             focal = a_t * (1 - p_t) ** self.gamma * ce
             total_cls = total_cls + (focal * self.class_weights).sum() / max(1, pos.sum().item())
 

@@ -57,13 +57,17 @@ generated at run time into the repository root (`checkpoints/`, `span_dumps/`,
 
 ## Running
 
-Everything is launched from this directory, with SLURM scripts referenced by
-path so the working directory is unambiguous:
+This directory is the source of truth for FishFormer — training runs from
+here, not from any scratch copy. Everything is launched from this directory,
+with SLURM scripts referenced by path so the working directory is unambiguous:
 
 ```bash
-mkdir -p logs
+mkdir -p logs                                 # SLURM --output needs this to exist at submit time
 sbatch slurm/run_former_5fold_ckpt.sbatch     # the main result: array 0-4, one fold per task
 ```
+
+Runtime outputs (`checkpoints/`, `span_dumps/`, `box_viz/`, `logs/`, result
+JSONs) are written here alongside the code and are gitignored.
 
 That trains leave-one-recording-out within each of 5 folds and appends per-fold
 results to `fishtal_results.json`. Ablations follow the same pattern:

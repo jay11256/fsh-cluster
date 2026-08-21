@@ -64,6 +64,53 @@ FEATS_ROOT = {
     # pre-processing (trained for few-shot classification, not localization).
     # 8fps vs patchx's 2fps -- see EXPERIMENTS.md "Independent of the MIL backbone".
     "dino_raw_8fps": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds11_baseline/feats_dino_raw/8fps",
+    # The "no MIL at all" ablation arm. Same raw-DINOv2 bypass as
+    # dino_raw_8fps, but dumped at 4fps so the stride (0.25s) matches every
+    # ds12_06_5fold bank -- that makes the ABSENCE OF THE MIL BACKBONE the only
+    # difference from those arms, where 8fps would have confounded it with
+    # double the temporal resolution. Also covers all 17 recordings, unlike the
+    # 8fps bank's 14 (run_dump_dino_raw.py iterates the older patchx list).
+    #
+    # Deliberately NOT per-fold: raw DINO involves no training, so there is
+    # nothing to hold out at the feature level and one bank correctly serves
+    # all 5 folds. This arm therefore carries strictly less leakage risk than
+    # the MIL arms, not more.
+    "dino_raw_4fps": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds11_baseline/feats_dino_raw/4fps",
+    # Experiment 1's ablated arm: the SAME few-shot MIL pipeline, trained with
+    # POINT_INFO.ENABLE=False so the backbone sees a uniform 16x16 DINO patch
+    # grid instead of 18 SAM3-tracked keypoints. Per-fold like the sam3 banks,
+    # so the leave-out property is preserved; the only difference from
+    # ds12_06_5fold_fold{F} is the absence of keypoint conditioning.
+    # Point-DENSITY ablation. Same SAM3 masks and the same few-shot MIL recipe,
+    # but the backbone was trained on fewer sampled points per fish: p8 keeps the
+    # four 3x3 grid corners, p2 the grid centre (see
+    # trokens/tools/subsample_sam3_points.py). Per-fold, so leave-out holds.
+    "ds12_06_5fold_sam3p8_fold0": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p8_fold0",
+    "ds12_06_5fold_sam3p8_fold1": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p8_fold1",
+    "ds12_06_5fold_sam3p8_fold2": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p8_fold2",
+    "ds12_06_5fold_sam3p8_fold3": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p8_fold3",
+    "ds12_06_5fold_sam3p8_fold4": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p8_fold4",
+    "ds12_06_5fold_sam3p2_fold0": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p2_fold0",
+    "ds12_06_5fold_sam3p2_fold1": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p2_fold1",
+    "ds12_06_5fold_sam3p2_fold2": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p2_fold2",
+    "ds12_06_5fold_sam3p2_fold3": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p2_fold3",
+    "ds12_06_5fold_sam3p2_fold4": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3p2_fold4",
+    # APPEARANCE ablation: same few-shot MIL recipe and the same real 18-point
+    # SAM3 tracks as the baseline, but trained AND dumped with BLACK_FRAMES=1 so
+    # every clip yields an identical feature map. The only thing distinguishing
+    # clips is their point trajectories, making this a geometry-only backbone --
+    # the exact complement of the nokp arm, which keeps pixels and flattens
+    # trajectory.
+    "ds12_06_5fold_sam3black_fold0": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3black_fold0",
+    "ds12_06_5fold_sam3black_fold1": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3black_fold1",
+    "ds12_06_5fold_sam3black_fold2": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3black_fold2",
+    "ds12_06_5fold_sam3black_fold3": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3black_fold3",
+    "ds12_06_5fold_sam3black_fold4": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_sam3black_fold4",
+    "ds12_06_5fold_nokp_fold0": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_nokp_fold0",
+    "ds12_06_5fold_nokp_fold1": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_nokp_fold1",
+    "ds12_06_5fold_nokp_fold2": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_nokp_fold2",
+    "ds12_06_5fold_nokp_fold3": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_nokp_fold3",
+    "ds12_06_5fold_nokp_fold4": "/fs/vulcan-projects/fsh_track/bhargav/sandboxes/asmloc_training/ds12_sweep/feats_ds12_06_5fold_nokp_fold4",
     # NEW Trokens backbones (ds12_04_sweep_frames): retrained with the actual
     # few-shot training pipeline at NUM_FRAMES in {8,16,32} (2/4/8fps), AND
     # with POINT_INFO.ENABLE=True (real CoTracker point-tracked features, 18
@@ -136,7 +183,11 @@ STRIDE = {"patchx": 0.5, "clsx": 2.0, "patchx_mil": 0.5, "patchx_motion": 0.5,
           "ds12_06_5fold_fold4": 0.25,
           "ds12_06_5fold_neural_fold0": 0.25, "ds12_06_5fold_neural_fold1": 0.25,
           "ds12_06_5fold_neural_fold2": 0.25, "ds12_06_5fold_neural_fold3": 0.25,
-          "ds12_06_5fold_neural_fold4": 0.25}
+          "ds12_06_5fold_neural_fold4": 0.25,
+          "dino_raw_4fps": 0.25,
+          "ds12_06_5fold_sam3black_fold0": 0.25, "ds12_06_5fold_sam3black_fold1": 0.25, "ds12_06_5fold_sam3black_fold2": 0.25, "ds12_06_5fold_sam3black_fold3": 0.25, "ds12_06_5fold_sam3black_fold4": 0.25,
+          "ds12_06_5fold_sam3p8_fold0": 0.25, "ds12_06_5fold_sam3p8_fold1": 0.25, "ds12_06_5fold_sam3p8_fold2": 0.25, "ds12_06_5fold_sam3p8_fold3": 0.25, "ds12_06_5fold_sam3p8_fold4": 0.25, "ds12_06_5fold_sam3p2_fold0": 0.25, "ds12_06_5fold_sam3p2_fold1": 0.25, "ds12_06_5fold_sam3p2_fold2": 0.25, "ds12_06_5fold_sam3p2_fold3": 0.25, "ds12_06_5fold_sam3p2_fold4": 0.25,
+          "ds12_06_5fold_nokp_fold0": 0.25, "ds12_06_5fold_nokp_fold1": 0.25, "ds12_06_5fold_nokp_fold2": 0.25, "ds12_06_5fold_nokp_fold3": 0.25, "ds12_06_5fold_nokp_fold4": 0.25}
 
 # 6 foreground behaviors + background. Background is index 6 (last) so foreground
 # ids line up with FG_CLASSES for the eval harness.

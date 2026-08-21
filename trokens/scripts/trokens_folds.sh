@@ -47,20 +47,100 @@ if [ ! -f "$FOLD_CSV" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# FIXED HYPERPARAMETERS -- equivalent to: sbatch trokens_exp.sh 5 3 sam3 both
+# FIXED HYPERPARAMETERS -- equivalent to: sbatch trokens_exp.sh 5 3 <PT_DATA> both
+#
+# PT_DATA is the one free argument (default sam3, i.e. exactly what this script
+# did before it took an argument, so existing OUTPUT_DIRs and AUTO_RESUME
+# checkpoints keep resolving unchanged):
+#
+#   sbatch trokens_folds.sh          # SAM3 keypoints  -> models/ds12_06_5fold
+#   sbatch trokens_folds.sh none     # NO keypoints    -> models/ds12_06_5fold_none
+#
+# "none" is the keypoint ablation: POINT_INFO.ENABLE=False makes the backbone a
+# plain uniform DINO patch grid with no trajectory tokens, so `patch_x` becomes
+# (B, T, 256, D) instead of (B, T, 18, D). Everything downstream pools over that
+# axis and is count-agnostic, so the dumped feature dimension stays 768 and the
+# stride stays 0.25s -- the resulting bank is drop-in for FishFormer.
 # ---------------------------------------------------------------------------
 N_WAY=5
 K_SHOT=3
-PT_DATA=sam3
+PT_DATA=${1:-sam3}
 MODE=both
 
+case "$PT_DATA" in
+	none|trokens|sam3|sam3p8|sam3p2|sam3black) ;;
+	*) echo "Error: Invalid PT_DATA '$PT_DATA'. Must be none|trokens|sam3|sam3p8|sam3p2|sam3black"; exit 1 ;;
+esac
+
+# Cache is READ but never written when FRAME_CACHE_READONLY=1. The cache key is
+# (clip, total_frames, frame indices) only -- independent of point data -- so
+# these runs hit the existing ds12_06_5x3 entries and add nothing to a
+# filesystem already at 92%. Export FRAME_CACHE_READONLY=1 when submitting.
 export FRAME_CACHE_ENABLE=True
 
-POINT_INFO_ENABLE=True
-TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_06"
-export NUM_POINTS_TO_SAMPLE=18
+case $PT_DATA in
+	"none")
+		POINT_INFO_ENABLE=False
+		# NOT trokens_exp.sh's ds6 cotracker path: that dump holds 2,515 pkls
+		# all named 080225_spawn_B1-5_clipNNN.pkl, not one ds12_06 clip, and
+		# base_ds.py:160 pickle.loads a pkl for EVERY clip regardless of
+		# POINT_INFO.ENABLE -- so it is an immediate FileNotFoundError here.
+		# Its points are also 192, which would not match the 256-patch grid
+		# that ENABLE=False produces (pointformer.py:492-499 adds the
+		# point-derived motion features to the patch-grid features).
+		#
+		# tools/make_grid_pkls.py writes the substitute: a static 16x16=256
+		# uniform grid over the 1280x720 frame, constant across frames. Points
+		# exist and count 256 so both constraints are satisfied, the model
+		# never grid-samples at them (ENABLE=False -> pointformer.py:423
+		# else-branch), and a grid that does not move gives the HOD and
+		# cross-motion modules zero displacement. No trajectory information
+		# reaches the model from any path.
+		TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/gridpklds12_06"
+		export NUM_POINTS_TO_SAMPLE=256
+		;;
+	"trokens")
+		POINT_INFO_ENABLE=True
+		TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/cotrackpklds6/cotracker3_bip_fr_32_fps_10/fshdata/feat_dump/"
+		export NUM_POINTS_TO_SAMPLE=256
+		;;
+	"sam3")
+		POINT_INFO_ENABLE=True
+		TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_06"
+		export NUM_POINTS_TO_SAMPLE=18
+		;;
+	"sam3black")
+		# APPEARANCE ablation: identical to "sam3" -- the real 18-point SAM3
+		# pkls, POINT_INFO enabled -- but BLACK_FRAMES=1 zeroes the pixels in
+		# the dataloader. DINO on a uniform frame is spatially constant, so no
+		# appearance survives; the model keeps point positions (via the
+		# positional embedding, added before grid_sample) and the HOD /
+		# cross-motion features computed from pred_tracks. This is the exact
+		# complement of "none", which keeps appearance and destroys trajectory.
+		POINT_INFO_ENABLE=True
+		TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_06"
+		export NUM_POINTS_TO_SAMPLE=18
+		export BLACK_FRAMES=1
+		;;
+	"sam3p8"|"sam3p2")
+		# Point-density ablation. Same SAM3 masks, fewer sampled points:
+		# tools/subsample_sam3_points.py keeps the 3x3 grid corners (8 total)
+		# or the grid centre (2 total) per fish, object-major ordering intact.
+		# The model factorizes the count as [grid, n/grid] with grid the middle
+		# divisor, so 8 -> 4x2 and 2 -> 2x1 are both valid layouts.
+		POINT_INFO_ENABLE=True
+		NPTS=${PT_DATA#sam3p}
+		TROKENS_PT_DATA="/fs/vulcan-projects/fsh_track/processed_data/sam3pklds12_06_p${NPTS}"
+		export NUM_POINTS_TO_SAMPLE=$NPTS
+		;;
+esac
+
 # Frame cache is keyed by clip content, which is identical across folds (only
 # the train/test label per video changes) -- shared across all 5 fold jobs.
+# Deliberately shared across PT_DATA settings too: _frame_cache_path keys on
+# (clip stem, total_frames, frame indices) only -- see trokens/datasets/utils.py
+# -- so it is independent of whether point info is enabled and of how many
+# points are sampled. Reusing it saves re-decoding every clip for the ablation.
 export FRAME_CACHE_DIR=${FRAME_CACHE_DIR:-/fs/vulcan-projects/fsh_track/processed_data/frame_cache/ds12_06_5x3}
 
 
@@ -71,7 +151,14 @@ conda config --add envs_dirs /fs/vulcan-projects/fsh_track/envs/
 conda activate trokens
 
 export CONFIG_TO_USE=fshdata
-export EXP_NAME=ds12_06_5fold
+# sam3 keeps the historical EXP_NAME so the existing 5 fold checkpoints in
+# models/ds12_06_5fold/ stay exactly where every downstream dump expects them;
+# other PT_DATA settings get their own tree.
+if [ "$PT_DATA" = "sam3" ]; then
+	export EXP_NAME=ds12_06_5fold
+else
+	export EXP_NAME=ds12_06_5fold_${PT_DATA}
+fi
 export SECONDARY_EXP_NAME="fold${FOLD}_${N_WAY}_way-${K_SHOT}_shot-${PT_DATA}-${MODE}"
 export TORCH_HOME=/fs/vulcan-projects/fsh_track/programs/trokens_workspace/trokens/torch_home
 export DATA_DIR=/fs/vulcan-projects/fsh_track/processed_data/dataset12_06

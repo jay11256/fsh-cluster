@@ -2,10 +2,21 @@
 /pipeline/pkls
 /pipeline/testing_clips
 
-# localization: generated outputs, not source
-/localization/checkpoints
-/localization/span_dumps
-/localization/box_viz
-/localization/logs
-/localization/*.out
-/localization/__pycache__
+# Generated outputs, never source. These are deliberately UNANCHORED (no leading
+# slash) so they match at any depth: the anchored form /localization/checkpoints
+# silently failed to cover localization/fishformer/checkpoints, which is how
+# 1.0 GB of .pt weights got staged for GitHub.
+__pycache__/
+*.pyc
+checkpoints/
+span_dumps/
+box_viz/
+logs/
+results/
+*.out
+*.pt
+*.pth
+*.ckpt
+
+# SLURM job logs
+/trial_run_outputs/

@@ -11,15 +11,26 @@
 #SBATCH --output=logs/formerCK_%a_%j.out
 #SBATCH --error=logs/formerCK_%a_%j.out
 set -e
-cd "$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"   # repo localization/ root
+# Under SLURM, ${BASH_SOURCE[0]} names the scheduler's staged copy of this
+# script in its spool dir, NOT the file in the repo, so deriving the repo root
+# from it lands somewhere unwritable. SLURM_SUBMIT_DIR is where sbatch was
+# invoked -- which must be localization/, the same assumption the relative
+# "#SBATCH --output=logs/..." paths above already make. Falls back to the
+# script's own location when run directly with bash.
+cd "${SLURM_SUBMIT_DIR:-$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")}"
+[ -d fishformer ] || { echo "ERROR: submit from the localization/ directory" >&2; exit 1; }
 PY=/fs/vulcan-projects/fsh_track/envs/trokens/bin/python
 
-# Retrain of the main (pyramid) FishFormer 5-fold result -- SAME config/label
-# as the existing Ds12_06_5fold_fold*_Former2 entries, just with the newly
-# added --save-ckpt (train_former.py never saved checkpoints before) and
-# per-class AP now captured in the results json. Overwrites those entries
-# with an equivalent run that also has checkpoints + per-behavior breakdown.
+# The main FishFormer 5-fold result: leave-one-recording-out within each of the
+# 5 backbone folds, so a fold's recordings were held out of BOTH the Trokens
+# backbone and the FishFormer head.
+#
+# Per-fold --out. train_former.py's results write is a read-modify-write
+# (`json.load` -> mutate -> `json.dump`), so pointing all 5 concurrent array
+# tasks at one shared file loses whichever folds finish first. Each task writes
+# its own file; merge_folds.py combines them afterwards.
 F=$SLURM_ARRAY_TASK_ID
+mkdir -p results
 FOLD_TEST=(
   "25-05-22-Run1-Sham-Cir,25-06-26-Run1-VetBond-NoCir,25-07-21-Run1-Vetbond-Cir,25-07-21-Run2-Sham-NoCir"
   "25-06-26-Run2-VetBond-NoCir,25-07-18-Run1-Sham-Cir,25-08-07-Run1-Vetbond-Cir,25-07-24-Run2-Sham-NoCir"
@@ -39,5 +50,6 @@ $PY -m fishformer.train_former \
   --batch-size 16 --windows-per-rec 64 --num-workers 2 --seed 0 \
   --score-thresh 0.05 --nms-iou 0.45 --max-props 400 --gt-window 4.0 \
   --save-ckpt \
+  --out "results/fold${F}.json" \
   --label "Ds12_06_5fold_fold${F}_Former2"
 echo "=== fold $F done ==="
